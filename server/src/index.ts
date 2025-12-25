@@ -1,12 +1,15 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import cors from 'cors';
+import path from 'path';
 import { ClientToServerEvents, ServerToClientEvents, Difficulty } from '../../shared/types';
 import { RoomManager } from './rooms/roomManager';
 
 const app = express();
-app.use(cors());
+
+// Serve static files from the React build
+const publicPath = path.join(__dirname, '../public');
+app.use(express.static(publicPath));
 
 const httpServer = createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
@@ -108,6 +111,12 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
+
+// SPA catch-all: serve index.html for all non-API routes
+app.get('/{*path}', (req, res) => {
+  res.sendFile(path.join(publicPath, 'index.html'));
+});
+
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

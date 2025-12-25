@@ -1,0 +1,16 @@
+{
+  "name": "coop-sudoku",
+  "version": "1.0.0",
+  "description": "Cooperative multiplayer Sudoku game",
+  "scripts": {
+    "install:all": "npm install --prefix client && npm install --prefix server",
+    "build:client": "npm run build --prefix client",
+    "build": "npm run build:client",
+    "start": "npm start --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "dev:server": "npm run dev --prefix server",
+    "dev": "npm run dev:server"
+  },
+  "keywords": ["sudoku", "multiplayer", "cooperative", "game"],
+  "license": "ISC"
+}
