@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import type { Difficulty } from '../../../shared/types';
+import type { Difficulty, GameMode } from '../../../shared/types';
 import { generateName } from '../utils/nameGenerator';
-import { PuzzleIcon, UserIcon, ArrowRightIcon, PlusIcon, ExternalLinkIcon } from 'lucide-react';
+import { PuzzleIcon, UserIcon, ArrowRightIcon, PlusIcon, ExternalLinkIcon, UsersIcon, SwordsIcon } from 'lucide-react';
 
 interface LobbyProps {
-  onCreateRoom: (name: string, difficulty: Difficulty) => void;
+  onCreateRoom: (name: string, difficulty: Difficulty, mode: GameMode) => void;
   onJoinRoom: (roomId: string, name: string) => void;
   initialRoomCode?: string;
 }
@@ -13,6 +13,42 @@ const Lobby: React.FC<LobbyProps> = ({ onCreateRoom, onJoinRoom, initialRoomCode
   const [name, setName] = useState(generateName());
   const [roomId, setRoomId] = useState(initialRoomCode);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
+  const [mode, setMode] = useState<GameMode>('coop');
+
+  const ModeSelector = () => (
+    <div className="space-y-2">
+      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Game Mode</label>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => setMode('coop')}
+          className={`py-3 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+            mode === 'coop'
+              ? 'bg-green-600 text-white shadow-lg shadow-green-500/30'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+          }`}
+        >
+          <UsersIcon size={18} />
+          Coop
+        </button>
+        <button
+          onClick={() => setMode('versus')}
+          className={`py-3 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+            mode === 'versus'
+              ? 'bg-orange-600 text-white shadow-lg shadow-orange-500/30'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+          }`}
+        >
+          <SwordsIcon size={18} />
+          Versus
+        </button>
+      </div>
+      {mode === 'versus' && (
+        <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+          Race to fill cells! +100 pts first, +50 pts if claimed, -250 pts wrong
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -22,7 +58,7 @@ const Lobby: React.FC<LobbyProps> = ({ onCreateRoom, onJoinRoom, initialRoomCode
             <PuzzleIcon size={32} />
           </div>
           <h1 className="text-3xl font-bold tracking-tight">Coop Sudoku</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2">Solve puzzles together in real-time</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-2">Solve puzzles together or compete!</p>
         </div>
 
         <div className="space-y-6">
@@ -83,36 +119,10 @@ const Lobby: React.FC<LobbyProps> = ({ onCreateRoom, onJoinRoom, initialRoomCode
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Difficulty</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => setDifficulty(d)}
-                      className={`py-2 rounded-lg text-sm font-medium capitalize transition-all ${
-                        difficulty === d
-                          ? 'bg-red-600 text-white shadow-lg shadow-red-500/30'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => onCreateRoom(name, difficulty)}
-                  className="w-full mt-2 flex items-center justify-center gap-2 px-6 py-3 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-xl transition-all transform active:scale-[0.98]"
-                >
-                  <PlusIcon size={20} /> Create New Room
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-4">
+              <div className="space-y-4">
+                <ModeSelector />
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">New Game Difficulty</label>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Difficulty</label>
                   <div className="grid grid-cols-3 gap-2">
                     {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
                       <button
@@ -128,13 +138,47 @@ const Lobby: React.FC<LobbyProps> = ({ onCreateRoom, onJoinRoom, initialRoomCode
                       </button>
                     ))}
                   </div>
-                  <button
-                    onClick={() => onCreateRoom(name, difficulty)}
-                    className="w-full mt-2 flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-all transform active:scale-[0.98] shadow-lg shadow-red-500/25"
-                  >
-                    <PlusIcon size={20} /> Create Room
-                  </button>
                 </div>
+                <button
+                  onClick={() => onCreateRoom(name, difficulty, mode)}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-xl transition-all transform active:scale-[0.98]"
+                >
+                  <PlusIcon size={20} /> Create New Room
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-4">
+                <ModeSelector />
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Difficulty</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setDifficulty(d)}
+                        className={`py-2 rounded-lg text-sm font-medium capitalize transition-all ${
+                          difficulty === d
+                            ? 'bg-red-600 text-white shadow-lg shadow-red-500/30'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => onCreateRoom(name, difficulty, mode)}
+                  className={`w-full flex items-center justify-center gap-2 px-6 py-3 font-semibold rounded-xl transition-all transform active:scale-[0.98] shadow-lg ${
+                    mode === 'versus' 
+                      ? 'bg-orange-600 hover:bg-orange-700 text-white shadow-orange-500/25'
+                      : 'bg-red-600 hover:bg-red-700 text-white shadow-red-500/25'
+                  }`}
+                >
+                  <PlusIcon size={20} /> Create {mode === 'versus' ? 'Versus' : 'Coop'} Room
+                </button>
 
                 <div className="relative py-4">
                   <div className="absolute inset-0 flex items-center">

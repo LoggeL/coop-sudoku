@@ -11,6 +11,7 @@ interface CellProps {
   onClick: () => void;
   isError: boolean;
   cursorPlayers: { id: string; color: string; name: string }[];
+  claimedByOther?: boolean;
 }
 
 const Cell: React.FC<CellProps> = ({ 
@@ -22,7 +23,8 @@ const Cell: React.FC<CellProps> = ({
   highlightedNumber,
   onClick, 
   isError,
-  cursorPlayers
+  cursorPlayers,
+  claimedByOther = false
 }) => {
   const getCellClasses = () => {
     let classes = 'sudoku-cell transition-all duration-150 ';
@@ -30,8 +32,10 @@ const Cell: React.FC<CellProps> = ({
     // Base text color
     if (cell.initial) {
       classes += 'text-slate-900 dark:text-slate-100 font-bold ';
-    } else {
+    } else if (cell.isCorrect === false) {
       classes += 'text-red-600 dark:text-red-400 ';
+    } else {
+      classes += 'text-blue-600 dark:text-blue-400 ';
     }
 
     // Background based on state (priority order matters)
@@ -78,6 +82,11 @@ const Cell: React.FC<CellProps> = ({
             );
           })}
         </div>
+      )}
+      
+      {/* Claimed by other player indicator (versus mode) */}
+      {claimedByOther && (
+        <div className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-orange-500 opacity-70" title="Claimed by opponent" />
       )}
       
       {/* Other players' cursor indicators */}

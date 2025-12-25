@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSocket } from './hooks/useSocket';
-import type { Room, Difficulty, ChatMessage } from '../../shared/types';
+import type { Room, Difficulty, ChatMessage, GameMode } from '../../shared/types';
 import Lobby from './components/Lobby';
 import Board from './components/Board';
 import PlayerList from './components/PlayerList';
 import Chat from './components/Chat';
 import NumberPad from './components/NumberPad';
 import { useTheme } from './context/ThemeContext';
-import { MoonIcon, SunIcon, LogOutIcon, LightbulbIcon, Share2Icon, TrophyIcon, Undo2Icon, ClockIcon, ExternalLinkIcon } from 'lucide-react';
+import { MoonIcon, SunIcon, LogOutIcon, LightbulbIcon, Share2Icon, TrophyIcon, Undo2Icon, ClockIcon, ExternalLinkIcon, UsersIcon, SwordsIcon } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 function App() {
@@ -16,6 +16,7 @@ function App() {
   const [room, setRoom] = useState<Room | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [wrongMoveToast, setWrongMoveToast] = useState<number | null>(null);
   const [gameWonData, setGameWonData] = useState<{ name: string; score: number }[] | null>(null);
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null);
   const [isNoteMode, setIsNoteMode] = useState(false);
@@ -38,6 +39,11 @@ function App() {
     socket.on('error', (msg) => {
       setError(msg);
       setTimeout(() => setError(null), 3000);
+    });
+
+    socket.on('wrongMove', (points) => {
+      setWrongMoveToast(points);
+      setTimeout(() => setWrongMoveToast(null), 2000);
     });
 
     socket.on('gameWon', (winnerScores) => {
@@ -65,6 +71,7 @@ function App() {
       socket.off('roomUpdated');
       socket.off('messageReceived');
       socket.off('error');
+      socket.off('wrongMove');
       socket.off('gameWon');
       socket.off('cursorUpdated');
     };
@@ -83,9 +90,10 @@ function App() {
     return () => clearInterval(interval);
   }, [room]);
 
-  // Emit cursor position when selected cell changes
+  // Emit cursor position when selected cell changes (only in coop mode)
   useEffect(() => {
     if (!socket || !room) return;
+    if (room.mode === 'versus') return; // No cursor sharing in versus
     if (selectedCell) {
       socket.emit('updateCursor', { x: selectedCell.row, y: selectedCell.col });
     } else {
@@ -93,8 +101,8 @@ function App() {
     }
   }, [socket, room, selectedCell]);
 
-  const handleCreateRoom = (name: string, difficulty: Difficulty) => {
-    socket?.emit('createRoom', name, difficulty);
+  const handleCreateRoom = (name: string, difficulty: Difficulty, mode: GameMode) => {
+    socket?.emit('createRoom', name, difficulty, mode);
   };
 
   const handleJoinRoom = (roomId: string, name: string) => {
@@ -110,6 +118,7 @@ function App() {
   };
 
   const handleUndo = () => {
+    if (room?.mode === 'versus') return; // No undo in versus
     socket?.emit('undo');
   };
 
@@ -120,7 +129,7 @@ function App() {
   };
 
   const handleHint = () => {
-    if (!room) return;
+    if (!room || room.mode === 'versus') return; // No hints in versus
     const emptyCells: {r: number, c: number}[] = [];
     room.gameState.board.forEach((row, r) => {
       row.forEach((cell, c) => {
@@ -166,16 +175,18 @@ function App() {
   };
 
   const handleClear = () => {
-    if (!selectedCell) return;
+    if (!selectedCell || room?.mode === 'versus') return; // No clearing in versus
     handleMove(selectedCell.row, selectedCell.col, null);
   };
 
   // Keyboard handler for numbers
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Ctrl+Z for undo
+    // Ctrl+Z for undo (only in coop)
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
       e.preventDefault();
-      handleUndo();
+      if (room?.mode !== 'versus') {
+        handleUndo();
+      }
       return;
     }
 
@@ -189,16 +200,22 @@ function App() {
         handleMove(selectedCell.row, selectedCell.col, val);
       }
     } else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
-      handleMove(selectedCell.row, selectedCell.col, null);
+      if (room?.mode !== 'versus') {
+        handleMove(selectedCell.row, selectedCell.col, null);
+      }
     } else if (e.key.toLowerCase() === 'n') {
       setIsNoteMode(prev => !prev);
     }
-  }, [selectedCell, isNoteMode]);
+  }, [selectedCell, isNoteMode, room?.mode]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
+
+  // Check if current player has finished (versus mode)
+  const currentPlayer = room?.players.find(p => p.id === socket?.id);
+  const playerFinished = room?.mode === 'versus' && currentPlayer?.finished;
 
   if (!room) {
     return (
@@ -221,16 +238,27 @@ function App() {
     );
   }
 
+  const isVersus = room.mode === 'versus';
+
   return (
     <div className="min-h-screen pb-52 sm:pb-12 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-2 sm:py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <h1 className="text-xl font-bold bg-gradient-to-r from-red-600 to-red-800 bg-clip-text text-transparent hidden sm:block">
               Coop Sudoku
             </h1>
+            {/* Mode Badge */}
+            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${
+              isVersus 
+                ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800'
+                : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800'
+            }`}>
+              {isVersus ? <SwordsIcon size={14} /> : <UsersIcon size={14} />}
+              {isVersus ? 'Versus' : 'Coop'}
+            </div>
             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
-              <span className="text-xs font-bold text-slate-500 uppercase">Room</span>
+              <span className="text-xs font-bold text-slate-500 uppercase hidden sm:inline">Room</span>
               <span className="font-mono font-bold tracking-wider">{room.id}</span>
               <button 
                 onClick={handleCopyRoomLink}
@@ -250,19 +278,23 @@ function App() {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2">
-            <button
-              onClick={handleUndo}
-              className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-sm border border-slate-200 dark:border-slate-700"
-              title="Undo last move (Ctrl+Z)"
-            >
-              <Undo2Icon size={16} /> <span className="hidden sm:inline">Undo</span>
-            </button>
-            <button
-              onClick={handleHint}
-              className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold rounded-xl hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-all text-sm border border-amber-200 dark:border-amber-800"
-            >
-              <LightbulbIcon size={16} /> <span className="hidden sm:inline">Hint (-15)</span>
-            </button>
+            {!isVersus && (
+              <>
+                <button
+                  onClick={handleUndo}
+                  className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-sm border border-slate-200 dark:border-slate-700"
+                  title="Undo last move (Ctrl+Z)"
+                >
+                  <Undo2Icon size={16} /> <span className="hidden sm:inline">Undo</span>
+                </button>
+                <button
+                  onClick={handleHint}
+                  className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold rounded-xl hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-all text-sm border border-amber-200 dark:border-amber-800"
+                >
+                  <LightbulbIcon size={16} /> <span className="hidden sm:inline">Hint (-15)</span>
+                </button>
+              </>
+            )}
             <button
               onClick={toggleTheme}
               className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
@@ -289,7 +321,7 @@ function App() {
           </div>
 
           {/* Center - Board */}
-          <div className="flex-shrink-0 order-1 xl:order-2">
+          <div className="flex-shrink-0 order-1 xl:order-2 relative">
             <Board 
               room={room} 
               onMove={handleMove} 
@@ -297,31 +329,72 @@ function App() {
               playerId={socket?.id || ''} 
               selectedCell={selectedCell}
               setSelectedCell={setSelectedCell}
-              playerCursors={playerCursors}
+              playerCursors={isVersus ? {} : playerCursors}
             />
+            
+            {/* Waiting overlay for finished player in versus */}
+            {playerFinished && !room.gameState.isComplete && (
+              <div className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-sm flex items-center justify-center">
+                <div className="text-center p-8">
+                  <div className="inline-flex p-4 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 mb-4">
+                    <TrophyIcon size={32} />
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">You finished!</h3>
+                  <p className="text-slate-500 dark:text-slate-400">Waiting for other players...</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Right Sidebar - Objective & Number Pad */}
           <div className="w-full xl:w-72 space-y-6 order-3">
             {/* Objective Card */}
-            <div className="bg-gradient-to-br from-red-600 to-red-800 p-6 rounded-2xl text-white shadow-xl hidden xl:block">
+            <div className={`p-6 rounded-2xl text-white shadow-xl hidden xl:block ${
+              isVersus 
+                ? 'bg-gradient-to-br from-orange-600 to-orange-800'
+                : 'bg-gradient-to-br from-red-600 to-red-800'
+            }`}>
               <h3 className="font-bold flex items-center gap-2 mb-2">
-                <TrophyIcon size={18} /> Objective
+                <TrophyIcon size={18} /> {isVersus ? 'Versus Rules' : 'Objective'}
               </h3>
-              <p className="text-sm opacity-90 leading-relaxed">
-                Collaborate with your team to fill the 9x9 grid. 
-                Each row, column, and 3x3 subgrid must contain numbers 1-9.
-              </p>
-              <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Correct</p>
-                  <p className="font-bold">+10 pts</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Mistake</p>
-                  <p className="font-bold">-5 pts</p>
-                </div>
-              </div>
+              {isVersus ? (
+                <>
+                  <p className="text-sm opacity-90 leading-relaxed">
+                    Race to fill cells on your own board! First to claim a cell gets bonus points.
+                  </p>
+                  <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">First</p>
+                      <p className="font-bold text-green-300">+100</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Claimed</p>
+                      <p className="font-bold">+50</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Wrong</p>
+                      <p className="font-bold text-red-300">-250</p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm opacity-90 leading-relaxed">
+                    Collaborate with your team to fill the 9x9 grid. 
+                    Each row, column, and 3x3 subgrid must contain numbers 1-9.
+                  </p>
+                  <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Correct</p>
+                      <p className="font-bold">+10 pts</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Mistake</p>
+                      <p className="font-bold">-5 pts</p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Number Pad - Desktop */}
@@ -332,6 +405,7 @@ function App() {
                 onNumberClick={handleNumberClick}
                 onClear={handleClear}
                 onToggleNoteMode={() => setIsNoteMode(!isNoteMode)}
+                hideClear={isVersus}
               />
             </div>
           </div>
@@ -346,33 +420,69 @@ function App() {
           onNumberClick={handleNumberClick}
           onClear={handleClear}
           onToggleNoteMode={() => setIsNoteMode(!isNoteMode)}
+          hideClear={isVersus}
         />
       </div>
+
+      {/* Wrong Move Toast */}
+      {wrongMoveToast !== null && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold animate-bounce">
+          Wrong number! -{wrongMoveToast} pts
+        </div>
+      )}
 
       {gameWonData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white dark:bg-slate-900 w-full max-w-md p-8 rounded-3xl shadow-2xl text-center border border-slate-200 dark:border-slate-800 transform animate-in zoom-in-95 duration-300">
-            <div className="inline-flex p-4 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 mb-6">
+            <div className={`inline-flex p-4 rounded-full mb-6 ${
+              isVersus 
+                ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
+                : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400'
+            }`}>
               <TrophyIcon size={48} />
             </div>
-            <h2 className="text-3xl font-black mb-2">Victory!</h2>
-            <p className="text-slate-500 dark:text-slate-400 mb-8">The puzzle has been solved!</p>
+            {isVersus ? (
+              <>
+                <h2 className="text-3xl font-black mb-2">
+                  {gameWonData.sort((a, b) => b.score - a.score)[0]?.name} Wins!
+                </h2>
+                <p className="text-slate-500 dark:text-slate-400 mb-8">Final standings</p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-3xl font-black mb-2">Victory!</h2>
+                <p className="text-slate-500 dark:text-slate-400 mb-8">The puzzle has been solved!</p>
+              </>
+            )}
             
             <div className="space-y-3 mb-8">
               {gameWonData.sort((a, b) => b.score - a.score).map((p, i) => (
-                <div key={p.name} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700">
+                <div key={p.name} className={`flex items-center justify-between p-3 rounded-xl border ${
+                  i === 0 && isVersus
+                    ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
+                    : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+                }`}>
                   <div className="flex items-center gap-3">
-                    <span className="font-black text-slate-300">#{i + 1}</span>
+                    <span className={`font-black ${i === 0 && isVersus ? 'text-orange-500' : 'text-slate-300'}`}>
+                      #{i + 1}
+                    </span>
                     <span className="font-bold">{p.name}</span>
+                    {i === 0 && isVersus && <span className="text-lg">👑</span>}
                   </div>
-                  <span className="font-black text-red-600 dark:text-red-400">{p.score}</span>
+                  <span className={`font-black ${
+                    i === 0 && isVersus ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400'
+                  }`}>{p.score}</span>
                 </div>
               ))}
             </div>
 
             <button
               onClick={() => window.location.reload()}
-              className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl shadow-lg shadow-red-500/30 transition-all active:scale-95"
+              className={`w-full py-4 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 ${
+                isVersus
+                  ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-500/30'
+                  : 'bg-red-600 hover:bg-red-700 shadow-red-500/30'
+              }`}
             >
               Play Again
             </button>

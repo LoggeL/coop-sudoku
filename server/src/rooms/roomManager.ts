@@ -1,4 +1,4 @@
-import { Room, Player, GameState, Difficulty, Cell } from '../../../shared/types';
+import { Room, Player, GameState, Difficulty, Cell, GameMode } from '../../../shared/types';
 import { SudokuEngine } from '../game/sudoku';
 
 interface MoveHistory {
@@ -8,6 +8,11 @@ interface MoveHistory {
   previousValue: number | null;
   previousIsCorrect: boolean | undefined;
   previousNotes: number[];
+}
+
+export interface MoveResult {
+  room: Room;
+  wrongMove?: number; // penalty points if wrong move
 }
 
 export class RoomManager {
@@ -45,29 +50,35 @@ export class RoomManager {
 
   private updateRoomActivity(roomId: string) {
     this.roomLastActivity.set(roomId, Date.now());
-  } // roomId -> history stack
+  }
 
-  createRoom(roomId: string, playerName: string, difficulty: Difficulty, playerId: string): Room {
-    const { board: initialBoard, solution } = SudokuEngine.generate(difficulty);
-    
-    const board: Cell[][] = initialBoard.map((row, r) =>
-      row.map((val, c) => ({
+  private createEmptyBoard(initialBoard: number[][]): Cell[][] {
+    return initialBoard.map((row) =>
+      row.map((val) => ({
         value: val === 0 ? null : val,
         initial: val !== 0,
         notes: [],
         isCorrect: val !== 0 ? true : undefined
       }))
     );
+  }
+
+  createRoom(roomId: string, playerName: string, difficulty: Difficulty, mode: GameMode, playerId: string): Room {
+    const { board: initialBoard, solution } = SudokuEngine.generate(difficulty);
+    
+    const board: Cell[][] = this.createEmptyBoard(initialBoard);
 
     const player: Player = {
       id: playerId,
       name: playerName,
       color: this.getRandomColor(),
-      score: 0
+      score: 0,
+      finished: false
     };
 
     const room: Room = {
       id: roomId,
+      mode,
       players: [player],
       gameState: {
         board,
@@ -77,6 +88,14 @@ export class RoomManager {
         startTime: Date.now()
       }
     };
+
+    // For versus mode, initialize per-player boards and claimed cells
+    if (mode === 'versus') {
+      room.playerBoards = {
+        [playerId]: this.createEmptyBoard(initialBoard)
+      };
+      room.claimedCells = {};
+    }
 
     this.rooms.set(roomId, room);
     this.playerRoomMap.set(playerId, roomId);
@@ -93,11 +112,27 @@ export class RoomManager {
       id: playerId,
       name: playerName,
       color: this.getRandomColor(),
-      score: 0
+      score: 0,
+      finished: false
     };
 
     room.players.push(player);
     this.playerRoomMap.set(playerId, roomId);
+
+    // For versus mode, create a board copy for the new player
+    if (room.mode === 'versus' && room.playerBoards) {
+      const { board: initialBoard } = SudokuEngine.generate(room.gameState.difficulty);
+      // Use the same puzzle (solution) - recreate from the stored solution
+      room.playerBoards[playerId] = room.gameState.board.map((row, r) =>
+        row.map((cell, c) => ({
+          value: cell.initial ? cell.value : null,
+          initial: cell.initial,
+          notes: [],
+          isCorrect: cell.initial ? true : undefined
+        }))
+      );
+    }
+
     this.updateRoomActivity(roomId);
     return room;
   }
@@ -112,8 +147,12 @@ export class RoomManager {
     room.players = room.players.filter(p => p.id !== playerId);
     this.playerRoomMap.delete(playerId);
 
+    // Clean up player's board in versus mode
+    if (room.mode === 'versus' && room.playerBoards) {
+      delete room.playerBoards[playerId];
+    }
+
     if (room.players.length === 0) {
-      // In a real app, we might wait 5 mins, but here we'll just delete
       this.rooms.delete(roomId);
       return { roomId, room: null };
     }
@@ -126,15 +165,26 @@ export class RoomManager {
     return roomId ? this.rooms.get(roomId) || null : null;
   }
 
-  makeMove(playerId: string, row: number, col: number, value: number | null): Room | null {
+  makeMove(playerId: string, row: number, col: number, value: number | null): MoveResult | null {
     const room = this.getRoomByPlayerId(playerId);
     if (!room || room.gameState.isComplete) return null;
 
-    const cell = room.gameState.board[row][col];
-    if (cell.initial) return null;
-
     const player = room.players.find(p => p.id === playerId);
     if (!player) return null;
+
+    // Player already finished in versus mode
+    if (room.mode === 'versus' && player.finished) return null;
+
+    if (room.mode === 'versus') {
+      return this.makeMoveVersus(room, player, playerId, row, col, value);
+    } else {
+      return this.makeMoveCoop(room, player, playerId, row, col, value);
+    }
+  }
+
+  private makeMoveCoop(room: Room, player: Player, playerId: string, row: number, col: number, value: number | null): MoveResult | null {
+    const cell = room.gameState.board[row][col];
+    if (cell.initial) return null;
 
     // Record history before making changes
     const history = this.moveHistory.get(room.id);
@@ -147,7 +197,6 @@ export class RoomManager {
         previousIsCorrect: cell.isCorrect,
         previousNotes: [...cell.notes]
       });
-      // Keep max 50 moves in history
       if (history.length > 50) history.shift();
     }
 
@@ -155,29 +204,105 @@ export class RoomManager {
       cell.value = null;
       cell.isCorrect = undefined;
       cell.lastModifiedBy = playerId;
-    } else {
-      const isCorrect = room.gameState.solution[row][col] === value;
-      cell.value = value;
-      cell.isCorrect = isCorrect;
-      cell.lastModifiedBy = playerId;
-
-      if (isCorrect) {
-        player.score += 10;
-      } else {
-        player.score = Math.max(0, player.score - 5);
-      }
+      cell.notes = [];
+      room.gameState.isComplete = this.checkWin(room.gameState.board, room.gameState.solution);
+      this.updateRoomActivity(room.id);
+      return { room };
     }
 
-    room.gameState.isComplete = this.checkWin(room.gameState);
+    const isCorrect = room.gameState.solution[row][col] === value;
+    
+    if (!isCorrect) {
+      // Wrong move - don't place, just penalize
+      player.score = Math.max(0, player.score - 5);
+      this.updateRoomActivity(room.id);
+      return { room, wrongMove: 5 };
+    }
+
+    // Correct move
+    cell.value = value;
+    cell.isCorrect = true;
+    cell.lastModifiedBy = playerId;
+    cell.notes = [];
+    player.score += 10;
+    this.clearNotesForNumber(room.gameState.board, row, col, value);
+
+    room.gameState.isComplete = this.checkWin(room.gameState.board, room.gameState.solution);
     this.updateRoomActivity(room.id);
-    return room;
+    return { room };
+  }
+
+  private makeMoveVersus(room: Room, player: Player, playerId: string, row: number, col: number, value: number | null): MoveResult | null {
+    if (!room.playerBoards || !room.claimedCells) return null;
+
+    const playerBoard = room.playerBoards[playerId];
+    if (!playerBoard) return null;
+
+    const cell = playerBoard[row][col];
+    if (cell.initial) return null;
+    if (cell.value !== null) return null; // Cell already filled in versus
+
+    if (value === null) {
+      // No clearing in versus mode - cells stay once filled correctly
+      return { room };
+    }
+
+    const isCorrect = room.gameState.solution[row][col] === value;
+    
+    if (!isCorrect) {
+      // Wrong move - don't place, just penalize
+      player.score = Math.max(0, player.score - 250);
+      this.updateRoomActivity(room.id);
+      return { room, wrongMove: 250 };
+    }
+
+    // Correct move - place it
+    cell.value = value;
+    cell.isCorrect = true;
+    cell.lastModifiedBy = playerId;
+    cell.notes = [];
+    this.clearNotesForNumber(playerBoard, row, col, value);
+
+    // Check if this cell was already claimed
+    const cellKey = `${row}-${col}`;
+    if (room.claimedCells[cellKey]) {
+      // Someone else claimed it first
+      player.score += 50;
+    } else {
+      // First to claim!
+      player.score += 100;
+      room.claimedCells[cellKey] = playerId;
+    }
+
+    // Check if this player finished their board
+    if (this.checkWin(playerBoard, room.gameState.solution)) {
+      player.finished = true;
+    }
+
+    // Check if all players finished
+    const allFinished = room.players.every(p => p.finished);
+    if (allFinished) {
+      room.gameState.isComplete = true;
+    }
+
+    this.updateRoomActivity(room.id);
+    return { room };
   }
 
   toggleNote(playerId: string, row: number, col: number, note: number): Room | null {
     const room = this.getRoomByPlayerId(playerId);
     if (!room || room.gameState.isComplete) return null;
 
-    const cell = room.gameState.board[row][col];
+    // Get the appropriate board based on mode
+    let board: Cell[][];
+    if (room.mode === 'versus') {
+      if (!room.playerBoards || !room.playerBoards[playerId]) return null;
+      board = room.playerBoards[playerId];
+    } else {
+      board = room.gameState.board;
+    }
+
+    const cell = board[row][col];
     if (cell.initial || cell.value !== null) return null;
 
     const index = cell.notes.indexOf(note);
@@ -193,6 +318,9 @@ export class RoomManager {
   useHint(playerId: string, row: number, col: number): Room | null {
     const room = this.getRoomByPlayerId(playerId);
     if (!room || room.gameState.isComplete) return null;
+
+    // No hints in versus mode
+    if (room.mode === 'versus') return null;
 
     const cell = room.gameState.board[row][col];
     if (cell.initial || cell.value === room.gameState.solution[row][col]) return null;
@@ -220,13 +348,19 @@ export class RoomManager {
 
     player.score = Math.max(0, player.score - 15);
 
-    room.gameState.isComplete = this.checkWin(room.gameState);
+    // Clear notes for this number
+    this.clearNotesForNumber(room.gameState.board, row, col, cell.value!);
+
+    room.gameState.isComplete = this.checkWin(room.gameState.board, room.gameState.solution);
     return room;
   }
 
   undo(playerId: string): Room | null {
     const room = this.getRoomByPlayerId(playerId);
     if (!room || room.gameState.isComplete) return null;
+
+    // No undo in versus mode
+    if (room.mode === 'versus') return null;
 
     const history = this.moveHistory.get(room.id);
     if (!history || history.length === 0) return null;
@@ -251,10 +385,32 @@ export class RoomManager {
     return room;
   }
 
-  private checkWin(gameState: GameState): boolean {
+  private clearNotesForNumber(board: Cell[][], row: number, col: number, value: number): void {
+    // Clear from same row
+    for (let c = 0; c < 9; c++) {
+      const idx = board[row][c].notes.indexOf(value);
+      if (idx !== -1) board[row][c].notes.splice(idx, 1);
+    }
+    // Clear from same column
+    for (let r = 0; r < 9; r++) {
+      const idx = board[r][col].notes.indexOf(value);
+      if (idx !== -1) board[r][col].notes.splice(idx, 1);
+    }
+    // Clear from same 3x3 block
+    const blockRowStart = Math.floor(row / 3) * 3;
+    const blockColStart = Math.floor(col / 3) * 3;
+    for (let r = blockRowStart; r < blockRowStart + 3; r++) {
+      for (let c = blockColStart; c < blockColStart + 3; c++) {
+        const idx = board[r][c].notes.indexOf(value);
+        if (idx !== -1) board[r][c].notes.splice(idx, 1);
+      }
+    }
+  }
+
+  private checkWin(board: Cell[][], solution: number[][]): boolean {
     for (let r = 0; r < 9; r++) {
       for (let c = 0; c < 9; c++) {
-        if (gameState.board[r][c].value !== gameState.solution[r][c]) {
+        if (board[r][c].value !== solution[r][c]) {
           return false;
         }
       }
@@ -265,5 +421,16 @@ export class RoomManager {
   private getRandomColor(): string {
     const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
     return colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  // Helper to get the board for a specific player (for sending to client)
+  getPlayerBoard(playerId: string): Cell[][] | null {
+    const room = this.getRoomByPlayerId(playerId);
+    if (!room) return null;
+
+    if (room.mode === 'versus' && room.playerBoards) {
+      return room.playerBoards[playerId] || null;
+    }
+    return room.gameState.board;
   }
 }

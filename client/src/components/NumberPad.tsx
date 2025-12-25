@@ -7,6 +7,7 @@ interface NumberPadProps {
   onNumberClick: (num: number) => void;
   onClear: () => void;
   onToggleNoteMode: () => void;
+  hideClear?: boolean;
 }
 
 const NumberPad: React.FC<NumberPadProps> = ({ 
@@ -14,7 +15,8 @@ const NumberPad: React.FC<NumberPadProps> = ({
   isNoteMode, 
   onNumberClick, 
   onClear, 
-  onToggleNoteMode 
+  onToggleNoteMode,
+  hideClear = false
 }) => {
   const buttonBase = "flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-xl hover:border-red-500 hover:text-red-500 transition-all active:scale-95 shadow-sm";
 
@@ -33,27 +35,30 @@ const NumberPad: React.FC<NumberPadProps> = ({
           </button>
         ))}
         
-        {/* Clear button - spans 2 columns */}
-        <button
-          onClick={onClear}
-          className={`col-span-2 h-14 ${buttonBase} hover:border-red-500 hover:text-red-500 gap-2`}
-          title="Clear cell"
-        >
-          <EraserIcon size={20} />
-          Clear
-        </button>
+        {/* Clear button - spans 2 columns (hidden in versus mode) */}
+        {!hideClear && (
+          <button
+            onClick={onClear}
+            className={`col-span-2 h-14 ${buttonBase} hover:border-red-500 hover:text-red-500 gap-2`}
+            title="Clear cell"
+          >
+            <EraserIcon size={20} />
+            Clear
+          </button>
+        )}
         
         {/* Notes button */}
         <button
           onClick={onToggleNoteMode}
           title="Toggle Notes Mode (N)"
-          className={`h-14 flex items-center justify-center rounded-xl font-bold transition-all active:scale-95 shadow-sm border ${
+          className={`h-14 ${hideClear ? 'col-span-3' : ''} flex items-center justify-center rounded-xl font-bold transition-all active:scale-95 shadow-sm border gap-2 ${
             isNoteMode 
               ? 'bg-red-600 border-red-600 text-white' 
               : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-red-500 hover:text-red-500'
           }`}
         >
           <PencilIcon size={22} />
+          {hideClear && <span className="text-sm">Notes</span>}
         </button>
       </div>
     </div>

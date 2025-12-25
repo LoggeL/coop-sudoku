@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
-import { ClientToServerEvents, ServerToClientEvents, Difficulty } from '../../shared/types';
+import { ClientToServerEvents, ServerToClientEvents, Difficulty, GameMode, Room } from '../../shared/types';
 import { RoomManager } from './rooms/roomManager';
 
 const app = express();
@@ -21,30 +21,64 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
 
 const roomManager = new RoomManager();
 
+// Helper to create player-specific room view for versus mode
+function getRoomForPlayer(room: Room, playerId: string): Room {
+  if (room.mode === 'versus' && room.playerBoards) {
+    // Send the player their own board in gameState.board
+    const playerBoard = room.playerBoards[playerId];
+    if (playerBoard) {
+      return {
+        ...room,
+        gameState: {
+          ...room.gameState,
+          board: playerBoard
+        },
+        // Don't send other players' boards
+        playerBoards: undefined
+      };
+    }
+  }
+  return room;
+}
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('createRoom', (playerName, difficulty) => {
+  socket.on('createRoom', (playerName, difficulty, mode) => {
     const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const room = roomManager.createRoom(roomId, playerName, difficulty, socket.id);
+    const room = roomManager.createRoom(roomId, playerName, difficulty, mode, socket.id);
     socket.join(roomId);
-    io.to(roomId).emit('roomUpdated', room);
+    io.to(roomId).emit('roomUpdated', getRoomForPlayer(room, socket.id));
   });
 
   socket.on('joinRoom', (roomId, playerName) => {
     const room = roomManager.joinRoom(roomId, playerName, socket.id);
     if (room) {
       socket.join(roomId);
-      io.to(roomId).emit('roomUpdated', room);
+      // Send each player their own view of the room
+      room.players.forEach(player => {
+        io.to(player.id).emit('roomUpdated', getRoomForPlayer(room, player.id));
+      });
     } else {
       socket.emit('error', 'Room not found or full');
     }
   });
 
   socket.on('makeMove', (row, col, value) => {
-    const room = roomManager.makeMove(socket.id, row, col, value);
-    if (room) {
-      io.to(room.id).emit('roomUpdated', room);
+    const result = roomManager.makeMove(socket.id, row, col, value);
+    if (result) {
+      const { room, wrongMove } = result;
+      
+      // Notify player of wrong move
+      if (wrongMove !== undefined) {
+        socket.emit('wrongMove', wrongMove);
+      }
+      
+      // Send each player their own view
+      room.players.forEach(player => {
+        io.to(player.id).emit('roomUpdated', getRoomForPlayer(room, player.id));
+      });
+      
       if (room.gameState.isComplete) {
         const winnerScores = room.players.map(p => ({ name: p.name, score: p.score }));
         io.to(room.id).emit('gameWon', winnerScores);
@@ -55,7 +89,12 @@ io.on('connection', (socket) => {
   socket.on('toggleNote', (row, col, note) => {
     const room = roomManager.toggleNote(socket.id, row, col, note);
     if (room) {
-      io.to(room.id).emit('roomUpdated', room);
+      // In versus, only update the player who made the change
+      if (room.mode === 'versus') {
+        socket.emit('roomUpdated', getRoomForPlayer(room, socket.id));
+      } else {
+        io.to(room.id).emit('roomUpdated', room);
+      }
     }
   });
 
@@ -86,7 +125,8 @@ io.on('connection', (socket) => {
 
   socket.on('updateCursor', (cursor) => {
     const room = roomManager.getRoomByPlayerId(socket.id);
-    if (room) {
+    if (room && room.mode === 'coop') {
+      // Only share cursors in coop mode
       socket.to(room.id).emit('cursorUpdated', socket.id, cursor);
     }
   });
@@ -103,7 +143,9 @@ io.on('connection', (socket) => {
     if (result) {
       const { roomId, room } = result;
       if (room) {
-        io.to(roomId).emit('roomUpdated', room);
+        room.players.forEach(player => {
+          io.to(player.id).emit('roomUpdated', getRoomForPlayer(room, player.id));
+        });
       }
     }
     console.log('User disconnected:', socket.id);

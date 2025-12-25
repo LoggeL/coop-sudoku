@@ -1,4 +1,5 @@
 export type Difficulty = 'easy' | 'medium' | 'hard';
+export type GameMode = 'coop' | 'versus';
 
 export interface Player {
   id: string;
@@ -6,6 +7,7 @@ export interface Player {
   color: string;
   score: number;
   cursor?: { x: number; y: number };
+  finished?: boolean; // For versus mode: player completed their board
 }
 
 export interface Cell {
@@ -26,8 +28,12 @@ export interface GameState {
 
 export interface Room {
   id: string;
+  mode: GameMode;
   players: Player[];
   gameState: GameState;
+  // Versus mode specific
+  playerBoards?: Record<string, Cell[][]>;  // playerId -> their board
+  claimedCells?: Record<string, string>;     // "row-col" -> playerId who claimed first
 }
 
 export interface ChatMessage {
@@ -45,10 +51,11 @@ export interface ServerToClientEvents {
   gameWon: (winnerScores: { name: string; score: number }[]) => void;
   error: (message: string) => void;
   cursorUpdated: (playerId: string, cursor: { x: number; y: number } | undefined) => void;
+  wrongMove: (points: number) => void; // Notify player of wrong move penalty
 }
 
 export interface ClientToServerEvents {
-  createRoom: (playerName: string, difficulty: Difficulty) => void;
+  createRoom: (playerName: string, difficulty: Difficulty, mode: GameMode) => void;
   joinRoom: (roomId: string, playerName: string) => void;
   makeMove: (row: number, col: number, value: number | null) => void;
   toggleNote: (row: number, col: number, note: number) => void;

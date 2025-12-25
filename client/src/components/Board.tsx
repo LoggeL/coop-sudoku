@@ -15,6 +15,7 @@ interface BoardProps {
 const Board: React.FC<BoardProps> = ({ room, playerId, selectedCell, setSelectedCell, playerCursors }) => {
   const selectedCellData = selectedCell ? room.gameState.board[selectedCell.row][selectedCell.col] : null;
   const selectedCellValue = selectedCellData?.value ?? null;
+  const isVersus = room.mode === 'versus';
 
   const getBoxIndex = (row: number, col: number) => {
     return Math.floor(row / 3) * 3 + Math.floor(col / 3);
@@ -41,6 +42,14 @@ const Board: React.FC<BoardProps> = ({ room, playerId, selectedCell, setSelected
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  // Check if a cell was claimed by another player (versus mode)
+  const isCellClaimedByOther = (row: number, col: number): boolean => {
+    if (!isVersus || !room.claimedCells) return false;
+    const cellKey = `${row}-${col}`;
+    const claimerId = room.claimedCells[cellKey];
+    return claimerId !== undefined && claimerId !== playerId;
+  };
+
   return (
     <div className="sudoku-grid bg-white dark:bg-slate-900 shadow-2xl rounded-sm overflow-hidden">
       {room.gameState.board.map((row, rIndex) =>
@@ -53,9 +62,10 @@ const Board: React.FC<BoardProps> = ({ room, playerId, selectedCell, setSelected
           const isSameNumber = selectedCellValue !== null && cell.value === selectedCellValue;
           const hasMatchingNote = selectedCellValue !== null && cell.value === null && cell.notes.includes(selectedCellValue);
           const isError = cell.value !== null && !cell.initial && cell.isCorrect === false;
+          const claimedByOther = isCellClaimedByOther(rIndex, cIndex);
           
-          // Find other players' cursors on this cell
-          const cursorPlayers = Object.entries(playerCursors)
+          // Find other players' cursors on this cell (only in coop mode)
+          const cursorPlayers = isVersus ? [] : Object.entries(playerCursors)
             .filter(([id, pos]) => id !== playerId && pos.row === rIndex && pos.col === cIndex)
             .map(([id]) => room.players.find(p => p.id === id))
             .filter(Boolean);
@@ -72,6 +82,7 @@ const Board: React.FC<BoardProps> = ({ room, playerId, selectedCell, setSelected
               isError={isError}
               onClick={() => setSelectedCell({ row: rIndex, col: cIndex })}
               cursorPlayers={cursorPlayers as { id: string; color: string; name: string }[]}
+              claimedByOther={claimedByOther}
             />
           );
         })
