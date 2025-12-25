@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* LMF Color Palette */
+  --primary-color: #d90429;
+  --secondary-color: #8b0000;
+  --accent-color: #ee5a6f;
+  --primary-gradient: linear-gradient(135deg, #d90429 0%, #8b0000 100%);
+  --secondary-gradient: linear-gradient(135deg, #ff6b6b 0%, #d90429 100%);
+  
+  /* Grid styles */
+  --player-color: #d90429;
+  --border-thin: 1px;
+  --border-thick: 3px;
+  --grid-border-color: #1a1a2e;
+  --cell-border-color: rgba(148, 163, 184, 0.4);
+}
+
+.dark {
+  --grid-border-color: #e2e8f0;
+  --cell-border-color: rgba(100, 116, 139, 0.5);
+}
+
+/* Sudoku Grid Styles */
+.sudoku-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-width: min(85vw, 70vh, 600px);
+  border: var(--border-thick) solid var(--grid-border-color);
+  border-radius: 4px;
+  margin: 0 auto;
+}
+
+@media (min-width: 640px) {
+  .sudoku-grid {
+    max-width: min(70vh, 600px);
+  }
+}
+
+.sudoku-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--border-thin) solid var(--cell-border-color);
+  aspect-ratio: 1 / 1;
+  font-size: clamp(1.25rem, 5vw, 2.25rem);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  overflow: visible;
+}
+
+/* Thick right border for columns 3 and 6 (end of 3x3 boxes) */
+.sudoku-cell:nth-child(3n):not(:nth-child(9n)) {
+  border-right: var(--border-thick) solid var(--grid-border-color);
+}
+
+/* Thick bottom border for rows 3 and 6 (end of 3x3 boxes) */
+.sudoku-grid > div:nth-child(n+19):nth-child(-n+27),
+.sudoku-grid > div:nth-child(n+46):nth-child(-n+54) {
+  border-bottom: var(--border-thick) solid var(--grid-border-color);
+}
+
+/* Mobile-friendly number pad */
+@media (max-width: 640px) {
+  .number-pad-mobile {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    background: inherit;
+    padding: 1rem;
+    border-top: 1px solid var(--cell-border-color);
+  }
+}
