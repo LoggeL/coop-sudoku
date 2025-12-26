@@ -63,16 +63,16 @@ const Cell: React.FC<CellProps> = ({
       {cell.value !== null ? (
         <span className={isSameNumber && !isSelected ? 'font-black scale-110' : ''}>{cell.value}</span>
       ) : (
-        <div className="grid grid-cols-3 w-full h-full p-0.5 pointer-events-none">
+        <div className="grid grid-cols-3 w-full h-full p-px sm:p-0.5 pointer-events-none">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
             const isHighlightedNote = highlightedNumber === n && cell.notes.includes(n);
             return (
               <div
                 key={n}
-                className={`flex items-center justify-center text-[10px] leading-none transition-all ${
+                className={`flex items-center justify-center text-[8px] sm:text-[10px] leading-none transition-all ${
                   cell.notes.includes(n) 
                     ? isHighlightedNote
-                      ? 'text-amber-600 dark:text-amber-400 font-bold scale-125'
+                      ? 'text-amber-600 dark:text-amber-400 font-bold scale-110 sm:scale-125'
                       : 'text-slate-500 dark:text-slate-400'
                     : 'opacity-0'
                 }`}

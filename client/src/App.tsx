@@ -241,87 +241,89 @@ function App() {
   const isVersus = room.mode === 'versus';
 
   return (
-    <div className="min-h-screen pb-52 sm:pb-12 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
-      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-2 sm:py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-red-600 to-red-800 bg-clip-text text-transparent hidden sm:block">
+    <div className="min-h-screen pb-32 sm:pb-16 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-2 sm:px-4 py-2 sm:py-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 md:gap-4 flex-wrap min-w-0">
+            <h1 className="text-xl font-bold bg-gradient-to-r from-red-600 to-red-800 bg-clip-text text-transparent hidden md:block">
               Coop Sudoku
             </h1>
             {/* Mode Badge */}
-            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase ${
+            <div className={`flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-bold uppercase ${
               isVersus 
                 ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800'
                 : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800'
             }`}>
-              {isVersus ? <SwordsIcon size={14} /> : <UsersIcon size={14} />}
-              {isVersus ? 'Versus' : 'Coop'}
+              {isVersus ? <SwordsIcon size={12} className="sm:w-3.5 sm:h-3.5" /> : <UsersIcon size={12} className="sm:w-3.5 sm:h-3.5" />}
+              <span className="hidden xs:inline">{isVersus ? 'Versus' : 'Coop'}</span>
             </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
-              <span className="text-xs font-bold text-slate-500 uppercase hidden sm:inline">Room</span>
-              <span className="font-mono font-bold tracking-wider">{room.id}</span>
+            <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+              <span className="text-xs font-bold text-slate-500 uppercase hidden md:inline">Room</span>
+              <span className="font-mono font-bold tracking-wider text-xs sm:text-sm">{room.id}</span>
               <button 
                 onClick={handleCopyRoomLink}
-                className={`p-1 transition-colors ${copied ? 'text-green-500' : 'hover:text-blue-500'}`}
+                className={`p-0.5 sm:p-1 transition-colors ${copied ? 'text-green-500' : 'hover:text-blue-500'}`}
                 title="Copy invite link"
               >
-                {copied ? '✓' : <Share2Icon size={14} />}
+                {copied ? '✓' : <Share2Icon size={12} className="sm:w-3.5 sm:h-3.5" />}
               </button>
             </div>
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 capitalize text-sm font-bold text-slate-600 dark:text-slate-400">
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 capitalize text-sm font-bold text-slate-600 dark:text-slate-400">
               {room.gameState.difficulty}
             </div>
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-sm font-mono font-bold text-slate-600 dark:text-slate-400">
-              <ClockIcon size={14} />
+            <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-xs sm:text-sm font-mono font-bold text-slate-600 dark:text-slate-400">
+              <ClockIcon size={12} className="sm:w-3.5 sm:h-3.5" />
               {formatTime(elapsedTime)}
             </div>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-1 flex-shrink-0">
             {!isVersus && (
               <>
                 <button
                   onClick={handleUndo}
-                  className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-sm border border-slate-200 dark:border-slate-700"
+                  className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-lg sm:rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs sm:text-sm border border-slate-200 dark:border-slate-700"
                   title="Undo last move (Ctrl+Z)"
                 >
-                  <Undo2Icon size={16} /> <span className="hidden sm:inline">Undo</span>
+                  <Undo2Icon size={14} className="sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Undo</span>
                 </button>
                 <button
                   onClick={handleHint}
-                  className="flex items-center gap-2 px-2 sm:px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold rounded-xl hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-all text-sm border border-amber-200 dark:border-amber-800"
+                  className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold rounded-lg sm:rounded-xl hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-all text-xs sm:text-sm border border-amber-200 dark:border-amber-800"
                 >
-                  <LightbulbIcon size={16} /> <span className="hidden sm:inline">Hint (-15)</span>
+                  <LightbulbIcon size={14} className="sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Hint (-15)</span>
                 </button>
               </>
             )}
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+              className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
             >
-              {theme === 'dark' ? <SunIcon size={20} /> : <MoonIcon size={20} />}
+              {theme === 'dark' ? <SunIcon size={18} className="sm:w-5 sm:h-5" /> : <MoonIcon size={18} className="sm:w-5 sm:h-5" />}
             </button>
             <button
               onClick={() => window.location.reload()}
-              className="p-2 text-red-500 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+              className="p-1.5 sm:p-2 text-red-500 rounded-lg sm:rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
               title="Leave Room"
             >
-              <LogOutIcon size={20} />
+              <LogOutIcon size={18} className="sm:w-5 sm:h-5" />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 py-8">
-        <div className="flex flex-col xl:flex-row gap-6 items-start justify-center">
+      <main className="max-w-[1600px] mx-auto px-2 sm:px-4 py-4 sm:py-8">
+        <div className="flex flex-col xl:flex-row gap-4 sm:gap-6 items-start justify-center">
           {/* Left Sidebar - Players & Chat */}
-          <div className="w-full xl:w-72 space-y-6 order-2 xl:order-1">
+          <div className="w-full xl:w-72 space-y-4 sm:space-y-6 order-2 xl:order-1 hidden sm:block">
             <PlayerList players={room.players} currentPlayerId={socket?.id || ''} />
-            <Chat messages={messages} onSendMessage={(text) => socket?.emit('sendMessage', text)} currentPlayerId={socket?.id || ''} />
+            <div className="hidden md:block">
+              <Chat messages={messages} onSendMessage={(text) => socket?.emit('sendMessage', text)} currentPlayerId={socket?.id || ''} />
+            </div>
           </div>
 
           {/* Center - Board */}
-          <div className="flex-shrink-0 order-1 xl:order-2 relative">
+          <div className="flex-shrink-0 order-1 xl:order-2 relative w-full flex justify-center">
             <Board 
               room={room} 
               onMove={handleMove} 
@@ -413,7 +415,7 @@ function App() {
       </main>
 
       {/* Number Pad - Mobile (fixed bottom) */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-3">
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
         <NumberPad
           selectedValue={selectedCellValue}
           isNoteMode={isNoteMode}
