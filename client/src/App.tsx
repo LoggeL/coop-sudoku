@@ -422,7 +422,9 @@ function App() {
           onNumberClick={handleNumberClick}
           onClear={handleClear}
           onToggleNoteMode={() => setIsNoteMode(!isNoteMode)}
+          onHint={handleHint}
           hideClear={isVersus}
+          hideHint={isVersus}
         />
       </div>
 
