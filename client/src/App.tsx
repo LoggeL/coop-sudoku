@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSocket } from './hooks/useSocket';
 import type { Room, Difficulty, ChatMessage, GameMode } from '../../shared/types';
 import Lobby from './components/Lobby';
@@ -23,11 +23,41 @@ function App() {
   const [copied, setCopied] = useState(false);
   const [playerCursors, setPlayerCursors] = useState<Record<string, { row: number; col: number }>>({});
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [disconnected, setDisconnected] = useState(false);
+
+  // Refs for reconnect handling
+  const playerNameRef = useRef<string | null>(null);
+  const roomIdRef = useRef<string | null>(null);
+  const rejoiningRef = useRef(false);
+
+  // Toast timer refs (so rapid events don't hide later toasts early)
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrongMoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Last emitted cursor position (to skip redundant emits)
+  const lastEmittedCursorRef = useRef<{ row: number; col: number } | null>(null);
+
+  const showError = useCallback((msg: string) => {
+    if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    setError(msg);
+    errorTimerRef.current = setTimeout(() => setError(null), 3000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+      if (wrongMoveTimerRef.current) clearTimeout(wrongMoveTimerRef.current);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!socket) return;
 
     socket.on('roomUpdated', (updatedRoom) => {
+      rejoiningRef.current = false;
+      roomIdRef.current = updatedRoom.id;
       setRoom(updatedRoom);
       setError(null);
     });
@@ -37,13 +67,24 @@ function App() {
     });
 
     socket.on('error', (msg) => {
-      setError(msg);
-      setTimeout(() => setError(null), 3000);
+      if (rejoiningRef.current) {
+        // Rejoin after reconnect failed (room gone) - reset to lobby
+        rejoiningRef.current = false;
+        roomIdRef.current = null;
+        setRoom(null);
+        setMessages([]);
+        setSelectedCell(null);
+        setPlayerCursors({});
+        showError('Could not rejoin room: ' + msg);
+        return;
+      }
+      showError(msg);
     });
 
     socket.on('wrongMove', (points) => {
+      if (wrongMoveTimerRef.current) clearTimeout(wrongMoveTimerRef.current);
       setWrongMoveToast(points);
-      setTimeout(() => setWrongMoveToast(null), 2000);
+      wrongMoveTimerRef.current = setTimeout(() => setWrongMoveToast(null), 2000);
     });
 
     socket.on('gameWon', (winnerScores) => {
@@ -75,6 +116,36 @@ function App() {
       socket.off('gameWon');
       socket.off('cursorUpdated');
     };
+  }, [socket, showError]);
+
+  // Reconnect handling: show overlay on disconnect, rejoin room on reconnect
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleDisconnect = () => {
+      setDisconnected(true);
+    };
+
+    const handleConnect = () => {
+      setDisconnected(false);
+      // If we were in a room before the disconnect, rejoin it.
+      // The server removed us on disconnect and we reconnect with a new
+      // socket id, so we re-emit joinRoom with the stored room id and name.
+      if (roomIdRef.current && playerNameRef.current) {
+        rejoiningRef.current = true;
+        lastEmittedCursorRef.current = null;
+        setPlayerCursors({});
+        socket.emit('joinRoom', roomIdRef.current, playerNameRef.current);
+      }
+    };
+
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect', handleConnect);
+
+    return () => {
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect', handleConnect);
+    };
   }, [socket]);
 
   // Update elapsed time
@@ -91,21 +162,31 @@ function App() {
   }, [room]);
 
   // Emit cursor position when selected cell changes (only in coop mode)
+  const roomMode = room?.mode;
   useEffect(() => {
-    if (!socket || !room) return;
-    if (room.mode === 'versus') return; // No cursor sharing in versus
+    if (!socket || !roomMode) return;
+    if (roomMode === 'versus') return; // No cursor sharing in versus
+
+    // Skip emit when the position hasn't changed since the last emit
+    const last = lastEmittedCursorRef.current;
+    if (selectedCell && last && last.row === selectedCell.row && last.col === selectedCell.col) return;
+    if (!selectedCell && !last) return;
+
+    lastEmittedCursorRef.current = selectedCell;
     if (selectedCell) {
       socket.emit('updateCursor', { x: selectedCell.row, y: selectedCell.col });
     } else {
       socket.emit('updateCursor', undefined);
     }
-  }, [socket, room, selectedCell]);
+  }, [socket, selectedCell, roomMode]);
 
   const handleCreateRoom = (name: string, difficulty: Difficulty, mode: GameMode) => {
+    playerNameRef.current = name;
     socket?.emit('createRoom', name, difficulty, mode);
   };
 
   const handleJoinRoom = (roomId: string, name: string) => {
+    playerNameRef.current = name;
     socket?.emit('joinRoom', roomId, name);
   };
 
@@ -149,8 +230,9 @@ function App() {
     if (room) {
       const url = `${window.location.origin}?room=${room.id}`;
       navigator.clipboard.writeText(url);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -181,6 +263,9 @@ function App() {
 
   // Keyboard handler for numbers
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Ignore key presses while typing in an input (e.g. the chat box)
+    if ((e.target as HTMLElement).closest?.('input, textarea, [contenteditable="true"]')) return;
+
     // Ctrl+Z for undo (only in coop)
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
       e.preventDefault();
@@ -217,18 +302,30 @@ function App() {
   const currentPlayer = room?.players.find(p => p.id === socket?.id);
   const playerFinished = room?.mode === 'versus' && currentPlayer?.finished;
 
+  // Sorted final standings (sort a copy - never mutate state during render)
+  const standings = gameWonData ? [...gameWonData].sort((a, b) => b.score - a.score) : null;
+
+  const disconnectedBanner = disconnected && (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] bg-amber-500 text-white px-6 py-3 rounded-xl shadow-2xl font-bold flex items-center gap-2">
+      <span className="inline-block w-3 h-3 rounded-full bg-white animate-pulse" />
+      Connection lost — reconnecting…
+    </div>
+  );
+
   if (!room) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
         <div className="fixed top-4 right-4 z-50">
           <button
             onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg hover:scale-110 transition-all"
           >
             {theme === 'dark' ? <SunIcon size={20} /> : <MoonIcon size={20} />}
           </button>
         </div>
         <Lobby onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} initialRoomCode={getInitialRoomCode()} />
+        {disconnectedBanner}
         {error && (
           <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-xl shadow-2xl animate-bounce">
             {error}
@@ -260,10 +357,11 @@ function App() {
             <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
               <span className="text-xs font-bold text-slate-500 uppercase hidden md:inline">Room</span>
               <span className="font-mono font-bold tracking-wider text-xs sm:text-sm">{room.id}</span>
-              <button 
+              <button
                 onClick={handleCopyRoomLink}
                 className={`p-0.5 sm:p-1 transition-colors ${copied ? 'text-green-500' : 'hover:text-blue-500'}`}
                 title="Copy invite link"
+                aria-label="Copy invite link"
               >
                 {copied ? '✓' : <Share2Icon size={12} className="sm:w-3.5 sm:h-3.5" />}
               </button>
@@ -297,6 +395,7 @@ function App() {
             )}
             <button
               onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
             >
               {theme === 'dark' ? <SunIcon size={18} className="sm:w-5 sm:h-5" /> : <MoonIcon size={18} className="sm:w-5 sm:h-5" />}
@@ -305,6 +404,7 @@ function App() {
               onClick={() => window.location.reload()}
               className="p-1.5 sm:p-2 text-red-500 rounded-lg sm:rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
               title="Leave Room"
+              aria-label="Leave room"
             >
               <LogOutIcon size={18} className="sm:w-5 sm:h-5" />
             </button>
@@ -435,7 +535,9 @@ function App() {
         </div>
       )}
 
-      {gameWonData && (
+      {disconnectedBanner}
+
+      {standings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white dark:bg-slate-900 w-full max-w-md p-8 rounded-3xl shadow-2xl text-center border border-slate-200 dark:border-slate-800 transform animate-in zoom-in-95 duration-300">
             <div className={`inline-flex p-4 rounded-full mb-6 ${
@@ -448,7 +550,7 @@ function App() {
             {isVersus ? (
               <>
                 <h2 className="text-3xl font-black mb-2">
-                  {gameWonData.sort((a, b) => b.score - a.score)[0]?.name} Wins!
+                  {standings[0]?.name} Wins!
                 </h2>
                 <p className="text-slate-500 dark:text-slate-400 mb-8">Final standings</p>
               </>
@@ -460,8 +562,8 @@ function App() {
             )}
             
             <div className="space-y-3 mb-8">
-              {gameWonData.sort((a, b) => b.score - a.score).map((p, i) => (
-                <div key={p.name} className={`flex items-center justify-between p-3 rounded-xl border ${
+              {standings.map((p, i) => (
+                <div key={`${p.name}-${i}`} className={`flex items-center justify-between p-3 rounded-xl border ${
                   i === 0 && isVersus
                     ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
                     : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'

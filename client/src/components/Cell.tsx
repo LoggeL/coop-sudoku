@@ -59,7 +59,13 @@ const Cell: React.FC<CellProps> = ({
   };
 
   return (
-    <div className={getCellClasses()} onClick={onClick}>
+    <div
+      className={getCellClasses()}
+      onClick={onClick}
+      role="gridcell"
+      tabIndex={isSelected ? 0 : -1}
+      aria-selected={isSelected}
+    >
       {cell.value !== null ? (
         <span className={isSameNumber && !isSelected ? 'font-black scale-110' : ''}>{cell.value}</span>
       ) : (

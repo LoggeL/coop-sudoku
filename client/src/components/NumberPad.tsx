@@ -45,6 +45,7 @@ const NumberPad: React.FC<NumberPadProps> = ({
             onClick={onHint}
             className={`h-12 ${buttonBase} bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:border-amber-500 hover:text-amber-500`}
             title="Get a hint"
+            aria-label="Get a hint"
           >
             <LightbulbIcon size={22} />
           </button>
@@ -67,6 +68,8 @@ const NumberPad: React.FC<NumberPadProps> = ({
         <button
           onClick={onToggleNoteMode}
           title="Toggle Notes Mode (N)"
+          aria-label="Toggle notes mode"
+          aria-pressed={isNoteMode}
           className={`h-12 flex items-center justify-center rounded-lg font-bold transition-all active:scale-95 shadow-sm border ${
             isNoteMode 
               ? 'bg-red-600 border-red-600 text-white' 
@@ -93,6 +96,7 @@ const NumberPad: React.FC<NumberPadProps> = ({
             onClick={onClear}
             className={`h-12 ${buttonBase} hover:border-red-500 hover:text-red-500`}
             title="Clear cell"
+            aria-label="Clear cell"
           >
             <EraserIcon size={22} />
           </button>
@@ -131,6 +135,8 @@ const NumberPad: React.FC<NumberPadProps> = ({
         <button
           onClick={onToggleNoteMode}
           title="Toggle Notes Mode (N)"
+          aria-label="Toggle notes mode"
+          aria-pressed={isNoteMode}
           className={`h-14 ${hideClear ? 'col-span-3' : ''} flex items-center justify-center rounded-xl font-bold transition-all active:scale-95 shadow-sm border gap-2 ${
             isNoteMode 
               ? 'bg-red-600 border-red-600 text-white' 

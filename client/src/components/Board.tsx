@@ -24,7 +24,18 @@ const Board: React.FC<BoardProps> = ({ room, playerId, selectedCell, setSelected
   const selectedBoxIndex = selectedCell ? getBoxIndex(selectedCell.row, selectedCell.col) : null;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (!selectedCell) return;
+    // Ignore key presses while typing in an input (e.g. the chat box)
+    if ((e.target as HTMLElement).closest?.('input, textarea, [contenteditable="true"]')) return;
+
+    const isArrowKey = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key);
+    if (!isArrowKey) return;
+
+    e.preventDefault(); // Don't scroll the page with arrow keys
+
+    if (!selectedCell) {
+      setSelectedCell({ row: 0, col: 0 });
+      return;
+    }
 
     if (e.key === 'ArrowUp') {
       setSelectedCell({ row: Math.max(0, selectedCell.row - 1), col: selectedCell.col });
@@ -51,7 +62,7 @@ const Board: React.FC<BoardProps> = ({ room, playerId, selectedCell, setSelected
   };
 
   return (
-    <div className="sudoku-grid bg-white dark:bg-slate-900 shadow-2xl rounded-sm overflow-hidden">
+    <div role="grid" aria-label="Sudoku board" className="sudoku-grid bg-white dark:bg-slate-900 shadow-2xl rounded-sm overflow-hidden">
       {room.gameState.board.map((row, rIndex) =>
         row.map((cell, cIndex) => {
           const isSelected = selectedCell?.row === rIndex && selectedCell?.col === cIndex;

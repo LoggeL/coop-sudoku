@@ -15,11 +15,14 @@ export interface MoveResult {
   wrongMove?: number; // penalty points if wrong move
 }
 
+const MAX_HISTORY = 50;
+
 export class RoomManager {
   private rooms: Map<string, Room> = new Map();
   private playerRoomMap: Map<string, string> = new Map();
   private moveHistory: Map<string, MoveHistory[]> = new Map();
   private roomLastActivity: Map<string, number> = new Map();
+  private scoredCells: Map<string, Set<string>> = new Map(); // roomId -> "row,col" cells already awarded points (coop)
   private cleanupInterval: NodeJS.Timeout;
 
   constructor() {
@@ -43,6 +46,7 @@ export class RoomManager {
         this.rooms.delete(roomId);
         this.moveHistory.delete(roomId);
         this.roomLastActivity.delete(roomId);
+        this.scoredCells.delete(roomId);
         console.log(`Cleaned up inactive room: ${roomId}`);
       }
     }
@@ -50,6 +54,17 @@ export class RoomManager {
 
   private updateRoomActivity(roomId: string) {
     this.roomLastActivity.set(roomId, Date.now());
+  }
+
+  private pushHistory(roomId: string, entry: MoveHistory) {
+    const history = this.moveHistory.get(roomId);
+    if (!history) return;
+    history.push(entry);
+    if (history.length > MAX_HISTORY) history.shift();
+  }
+
+  hasRoom(roomId: string): boolean {
+    return this.rooms.has(roomId);
   }
 
   private createEmptyBoard(initialBoard: number[][]): Cell[][] {
@@ -100,6 +115,7 @@ export class RoomManager {
     this.rooms.set(roomId, room);
     this.playerRoomMap.set(playerId, roomId);
     this.moveHistory.set(roomId, []);
+    this.scoredCells.set(roomId, new Set());
     this.updateRoomActivity(roomId);
     return room;
   }
@@ -121,10 +137,9 @@ export class RoomManager {
 
     // For versus mode, create a board copy for the new player
     if (room.mode === 'versus' && room.playerBoards) {
-      const { board: initialBoard } = SudokuEngine.generate(room.gameState.difficulty);
-      // Use the same puzzle (solution) - recreate from the stored solution
-      room.playerBoards[playerId] = room.gameState.board.map((row, r) =>
-        row.map((cell, c) => ({
+      // Use the same puzzle - recreate from the shared initial board
+      room.playerBoards[playerId] = room.gameState.board.map((row) =>
+        row.map((cell) => ({
           value: cell.initial ? cell.value : null,
           initial: cell.initial,
           notes: [],
@@ -137,7 +152,7 @@ export class RoomManager {
     return room;
   }
 
-  leaveRoom(playerId: string): { roomId: string; room: Room | null } | null {
+  leaveRoom(playerId: string): { roomId: string; room: Room | null; gameWon?: boolean } | null {
     const roomId = this.playerRoomMap.get(playerId);
     if (!roomId) return null;
 
@@ -154,10 +169,20 @@ export class RoomManager {
 
     if (room.players.length === 0) {
       this.rooms.delete(roomId);
+      this.moveHistory.delete(roomId);
+      this.roomLastActivity.delete(roomId);
+      this.scoredCells.delete(roomId);
       return { roomId, room: null };
     }
 
-    return { roomId, room };
+    // In versus mode the departed player may have been the last one still playing
+    let gameWon = false;
+    if (room.mode === 'versus' && !room.gameState.isComplete && room.players.every(p => p.finished)) {
+      room.gameState.isComplete = true;
+      gameWon = true;
+    }
+
+    return { roomId, room, gameWon };
   }
 
   getRoomByPlayerId(playerId: string): Room | null {
@@ -186,10 +211,11 @@ export class RoomManager {
     const cell = room.gameState.board[row][col];
     if (cell.initial) return null;
 
-    // Record history before making changes
-    const history = this.moveHistory.get(room.id);
-    if (history) {
-      history.push({
+    if (value === null) {
+      // Nothing to clear
+      if (cell.value === null && cell.notes.length === 0) return null;
+
+      this.pushHistory(room.id, {
         playerId,
         row,
         col,
@@ -197,10 +223,7 @@ export class RoomManager {
         previousIsCorrect: cell.isCorrect,
         previousNotes: [...cell.notes]
       });
-      if (history.length > 50) history.shift();
-    }
 
-    if (value === null) {
       cell.value = null;
       cell.isCorrect = undefined;
       cell.lastModifiedBy = playerId;
@@ -211,20 +234,40 @@ export class RoomManager {
     }
 
     const isCorrect = room.gameState.solution[row][col] === value;
-    
+
     if (!isCorrect) {
-      // Wrong move - don't place, just penalize
+      // Wrong move - don't place, just penalize (board unchanged, no history)
       player.score = Math.max(0, player.score - 5);
       this.updateRoomActivity(room.id);
       return { room, wrongMove: 5 };
     }
+
+    // Cell already holds the correct value - nothing changes
+    if (cell.value === value) return null;
+
+    this.pushHistory(room.id, {
+      playerId,
+      row,
+      col,
+      previousValue: cell.value,
+      previousIsCorrect: cell.isCorrect,
+      previousNotes: [...cell.notes]
+    });
 
     // Correct move
     cell.value = value;
     cell.isCorrect = true;
     cell.lastModifiedBy = playerId;
     cell.notes = [];
-    player.score += 10;
+
+    // Only award points the first time a cell is solved (no clear/refill farming)
+    const scored = this.scoredCells.get(room.id);
+    const cellKey = `${row},${col}`;
+    if (scored && !scored.has(cellKey)) {
+      scored.add(cellKey);
+      player.score += 10;
+    }
+
     this.clearNotesForNumber(room.gameState.board, row, col, value);
 
     room.gameState.isComplete = this.checkWin(room.gameState.board, room.gameState.solution);
@@ -312,6 +355,7 @@ export class RoomManager {
       cell.notes.splice(index, 1);
     }
 
+    this.updateRoomActivity(room.id);
     return room;
   }
 
@@ -329,17 +373,14 @@ export class RoomManager {
     if (!player) return null;
 
     // Record history before hint
-    const history = this.moveHistory.get(room.id);
-    if (history) {
-      history.push({
-        playerId,
-        row,
-        col,
-        previousValue: cell.value,
-        previousIsCorrect: cell.isCorrect,
-        previousNotes: [...cell.notes]
-      });
-    }
+    this.pushHistory(room.id, {
+      playerId,
+      row,
+      col,
+      previousValue: cell.value,
+      previousIsCorrect: cell.isCorrect,
+      previousNotes: [...cell.notes]
+    });
 
     cell.value = room.gameState.solution[row][col];
     cell.isCorrect = true;
@@ -348,10 +389,14 @@ export class RoomManager {
 
     player.score = Math.max(0, player.score - 15);
 
+    // Hinted cells never award points, even after clear + refill
+    this.scoredCells.get(room.id)?.add(`${row},${col}`);
+
     // Clear notes for this number
     this.clearNotesForNumber(room.gameState.board, row, col, cell.value!);
 
     room.gameState.isComplete = this.checkWin(room.gameState.board, room.gameState.solution);
+    this.updateRoomActivity(room.id);
     return room;
   }
 
@@ -382,6 +427,7 @@ export class RoomManager {
     cell.notes = lastMove.previousNotes;
     cell.lastModifiedBy = playerId;
 
+    this.updateRoomActivity(room.id);
     return room;
   }
 

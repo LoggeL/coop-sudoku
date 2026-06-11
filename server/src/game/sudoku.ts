@@ -55,6 +55,26 @@ export class SudokuEngine {
     return newArray;
   }
 
+  // Counts solutions via backtracking, short-circuiting once `limit` is reached
+  private static countSolutions(board: number[][], limit: number): number {
+    for (let row = 0; row < 9; row++) {
+      for (let col = 0; col < 9; col++) {
+        if (board[row][col] === 0) {
+          let count = 0;
+          for (let num = 1; num <= 9 && count < limit; num++) {
+            if (this.isValid(board, row, col, num)) {
+              board[row][col] = num;
+              count += this.countSolutions(board, limit - count);
+              board[row][col] = 0;
+            }
+          }
+          return count;
+        }
+      }
+    }
+    return 1; // Board is full: exactly one solution found
+  }
+
   private static pokeHoles(board: number[][], difficulty: Difficulty): number[][] {
     const holes = {
       easy: 35,
@@ -62,12 +82,19 @@ export class SudokuEngine {
       hard: 55,
     }[difficulty];
 
+    // Try cells in random order; only keep removals that preserve a unique solution
+    const positions = this.shuffle(
+      Array.from({ length: 81 }, (_, i) => [Math.floor(i / 9), i % 9])
+    );
+
     let removed = 0;
-    while (removed < holes) {
-      const row = Math.floor(Math.random() * 9);
-      const col = Math.floor(Math.random() * 9);
-      if (board[row][col] !== 0) {
-        board[row][col] = 0;
+    for (const [row, col] of positions) {
+      if (removed >= holes) break;
+      const backup = board[row][col];
+      board[row][col] = 0;
+      if (this.countSolutions(board, 2) > 1) {
+        board[row][col] = backup;
+      } else {
         removed++;
       }
     }

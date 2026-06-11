@@ -11,7 +11,7 @@ interface LobbyProps {
 
 const Lobby: React.FC<LobbyProps> = ({ onCreateRoom, onJoinRoom, initialRoomCode = '' }) => {
   const [name, setName] = useState(generateName());
-  const [roomId, setRoomId] = useState(initialRoomCode);
+  const [roomId, setRoomId] = useState((initialRoomCode || '').toUpperCase());
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [mode, setMode] = useState<GameMode>('coop');
 
@@ -78,6 +78,7 @@ const Lobby: React.FC<LobbyProps> = ({ onCreateRoom, onJoinRoom, initialRoomCode
                 onClick={() => setName(generateName())}
                 className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 title="Randomize name"
+                aria-label="Randomize name"
               >
                 🎲
               </button>

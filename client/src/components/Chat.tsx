@@ -28,7 +28,7 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, currentPlayerId })
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl flex flex-col h-[400px] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-      <div className="p-4 border-bottom border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+      <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
         <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Chat</h3>
       </div>
       
@@ -70,8 +70,9 @@ const Chat: React.FC<ChatProps> = ({ messages, onSendMessage, currentPlayerId })
           placeholder="Type a message..."
           className="flex-1 bg-white dark:bg-slate-900 border-none rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
         />
-        <button 
+        <button
           type="submit"
+          aria-label="Send message"
           className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50"
           disabled={!text.trim()}
         >
