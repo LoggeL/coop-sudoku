@@ -1,151 +1,94 @@
 import React from 'react';
-import { PencilIcon, EraserIcon, LightbulbIcon } from 'lucide-react';
+import { PencilIcon, EraserIcon, Undo2Icon, LightbulbIcon } from 'lucide-react';
 
 interface NumberPadProps {
   selectedValue: number | null;
   isNoteMode: boolean;
+  /** counts[n] = how many n's are correctly placed on the board */
+  digitCounts: number[];
+  isVersus: boolean;
   onNumberClick: (num: number) => void;
   onClear: () => void;
   onToggleNoteMode: () => void;
-  onHint?: () => void;
-  hideClear?: boolean;
-  hideHint?: boolean;
+  onUndo: () => void;
+  onHint: () => void;
 }
 
-const NumberPad: React.FC<NumberPadProps> = ({ 
-  selectedValue, 
-  isNoteMode, 
-  onNumberClick, 
-  onClear, 
-  onToggleNoteMode,
-  onHint,
-  hideClear = false,
-  hideHint = false
-}) => {
-  const buttonBase = "flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg sm:rounded-xl font-bold text-lg sm:text-xl hover:border-red-500 hover:text-red-500 transition-all active:scale-95 shadow-sm";
+const toolClass =
+  'flex items-center justify-center gap-1.5 h-10 rounded-lg text-xs font-semibold transition-all active:scale-95 ' +
+  'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 ' +
+  'text-slate-600 dark:text-slate-300 hover:border-sky-400 hover:text-sky-600 dark:hover:text-sky-400';
 
+const NumberPad: React.FC<NumberPadProps> = ({
+  selectedValue,
+  isNoteMode,
+  digitCounts,
+  isVersus,
+  onNumberClick,
+  onClear,
+  onToggleNoteMode,
+  onUndo,
+  onHint
+}) => {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-slate-200 dark:border-slate-800 shadow-sm">
-      {/* Mobile layout: 4 columns - 3 for numbers, 1 for tools (hint, notes, clear) */}
-      <div className="grid grid-cols-4 gap-1.5 sm:hidden">
-        {/* Row 1: Numbers 1-3 + Hint */}
-        {[1, 2, 3].map((num) => (
-          <button
-            key={num}
-            onClick={() => onNumberClick(num)}
-            className={`h-12 ${buttonBase} ${
-              selectedValue === num ? 'border-red-500 bg-red-50 dark:bg-red-900/30 text-red-600' : ''
-            }`}
-          >
-            {num}
+    <div className="board-width space-y-1.5">
+      {/* Tool row */}
+      <div className={`grid gap-1.5 ${isVersus ? 'grid-cols-1' : 'grid-cols-4'}`}>
+        {!isVersus && (
+          <button onClick={onUndo} className={toolClass} title="Undo last move (Ctrl+Z)">
+            <Undo2Icon size={15} /> Undo
           </button>
-        ))}
-        {!hideHint ? (
-          <button
-            onClick={onHint}
-            className={`h-12 ${buttonBase} bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 hover:border-amber-500 hover:text-amber-500`}
-            title="Get a hint"
-            aria-label="Get a hint"
-          >
-            <LightbulbIcon size={22} />
-          </button>
-        ) : (
-          <div />
         )}
-        
-        {/* Row 2: Numbers 4-6 + Notes */}
-        {[4, 5, 6].map((num) => (
-          <button
-            key={num}
-            onClick={() => onNumberClick(num)}
-            className={`h-12 ${buttonBase} ${
-              selectedValue === num ? 'border-red-500 bg-red-50 dark:bg-red-900/30 text-red-600' : ''
-            }`}
-          >
-            {num}
+        {!isVersus && (
+          <button onClick={onClear} className={toolClass} title="Clear cell (Backspace)">
+            <EraserIcon size={15} /> Erase
           </button>
-        ))}
+        )}
         <button
           onClick={onToggleNoteMode}
-          title="Toggle Notes Mode (N)"
+          title="Toggle notes mode (N)"
           aria-label="Toggle notes mode"
           aria-pressed={isNoteMode}
-          className={`h-12 flex items-center justify-center rounded-lg font-bold transition-all active:scale-95 shadow-sm border ${
-            isNoteMode 
-              ? 'bg-red-600 border-red-600 text-white' 
-              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-red-500 hover:text-red-500'
+          className={`flex items-center justify-center gap-1.5 h-10 rounded-lg text-xs font-semibold transition-all active:scale-95 border ${
+            isNoteMode
+              ? 'bg-sky-600 border-sky-600 text-white shadow-md shadow-sky-500/30'
+              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-sky-400 hover:text-sky-600 dark:hover:text-sky-400'
           }`}
         >
-          <PencilIcon size={22} />
+          <PencilIcon size={15} /> Notes{isNoteMode ? ' on' : ''}
         </button>
-        
-        {/* Row 3: Numbers 7-9 + Clear */}
-        {[7, 8, 9].map((num) => (
-          <button
-            key={num}
-            onClick={() => onNumberClick(num)}
-            className={`h-12 ${buttonBase} ${
-              selectedValue === num ? 'border-red-500 bg-red-50 dark:bg-red-900/30 text-red-600' : ''
-            }`}
-          >
-            {num}
+        {!isVersus && (
+          <button onClick={onHint} className={`${toolClass} hover:border-amber-400 hover:text-amber-600 dark:hover:text-amber-400`} title="Reveal a random cell (-15 points)">
+            <LightbulbIcon size={15} /> Hint
           </button>
-        ))}
-        {!hideClear ? (
-          <button
-            onClick={onClear}
-            className={`h-12 ${buttonBase} hover:border-red-500 hover:text-red-500`}
-            title="Clear cell"
-            aria-label="Clear cell"
-          >
-            <EraserIcon size={22} />
-          </button>
-        ) : (
-          <div />
         )}
       </div>
 
-      {/* Desktop layout: 3 columns */}
-      <div className="hidden sm:grid grid-cols-3 gap-2">
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-          <button
-            key={num}
-            onClick={() => onNumberClick(num)}
-            className={`h-14 ${buttonBase} ${
-              selectedValue === num ? 'border-red-500 bg-red-50 dark:bg-red-900/30 text-red-600' : ''
-            }`}
-          >
-            {num}
-          </button>
-        ))}
-        
-        {/* Clear button - spans 2 columns (hidden in versus mode) */}
-        {!hideClear && (
-          <button
-            onClick={onClear}
-            className={`h-14 col-span-2 ${buttonBase} hover:border-red-500 hover:text-red-500 gap-2`}
-            title="Clear cell"
-          >
-            <EraserIcon size={20} />
-            Clear
-          </button>
-        )}
-        
-        {/* Notes button */}
-        <button
-          onClick={onToggleNoteMode}
-          title="Toggle Notes Mode (N)"
-          aria-label="Toggle notes mode"
-          aria-pressed={isNoteMode}
-          className={`h-14 ${hideClear ? 'col-span-3' : ''} flex items-center justify-center rounded-xl font-bold transition-all active:scale-95 shadow-sm border gap-2 ${
-            isNoteMode 
-              ? 'bg-red-600 border-red-600 text-white' 
-              : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-red-500 hover:text-red-500'
-          }`}
-        >
-          <PencilIcon size={22} />
-          {hideClear && <span className="text-sm">Notes</span>}
-        </button>
+      {/* Number row */}
+      <div className="grid grid-cols-9 gap-1.5">
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => {
+          const remaining = 9 - (digitCounts[num] ?? 0);
+          const done = remaining <= 0;
+          return (
+            <button
+              key={num}
+              onClick={() => onNumberClick(num)}
+              aria-label={`Enter ${num} (${remaining} remaining)`}
+              className={`flex flex-col items-center justify-center h-12 sm:h-14 rounded-lg border font-bold text-lg sm:text-xl leading-none transition-all active:scale-95 ${
+                selectedValue === num
+                  ? 'bg-sky-100 dark:bg-sky-500/25 border-sky-500 text-sky-700 dark:text-sky-300'
+                  : done
+                    ? 'bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 text-slate-300 dark:text-slate-600'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-sky-400 hover:text-sky-600 dark:hover:text-sky-400'
+              }`}
+            >
+              {num}
+              <span className={`mt-0.5 text-[9px] font-medium ${done ? 'opacity-0' : 'text-slate-400 dark:text-slate-500'}`}>
+                {remaining}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

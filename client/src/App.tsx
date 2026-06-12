@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSocket } from './hooks/useSocket';
 import type { Room, Difficulty, ChatMessage, GameMode } from '../../shared/types';
 import Lobby from './components/Lobby';
@@ -7,7 +7,7 @@ import PlayerList from './components/PlayerList';
 import Chat from './components/Chat';
 import NumberPad from './components/NumberPad';
 import { useTheme } from './context/ThemeContext';
-import { MoonIcon, SunIcon, LogOutIcon, LightbulbIcon, Share2Icon, TrophyIcon, Undo2Icon, ClockIcon, ExternalLinkIcon, UsersIcon, SwordsIcon } from 'lucide-react';
+import { MoonIcon, SunIcon, LogOutIcon, Share2Icon, TrophyIcon, ClockIcon, CheckIcon, UsersIcon, SwordsIcon, Grid3x3Icon } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 function App() {
@@ -93,7 +93,7 @@ function App() {
         particleCount: 150,
         spread: 70,
         origin: { y: 0.6 },
-        colors: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444']
+        colors: ['#0ea5e9', '#10b981', '#f59e0b', '#dc2626']
       });
     });
 
@@ -102,7 +102,8 @@ function App() {
         if (cursor) {
           return { ...prev, [playerId]: { row: cursor.x, col: cursor.y } };
         } else {
-          const { [playerId]: _, ...rest } = prev;
+          const rest = { ...prev };
+          delete rest[playerId];
           return rest;
         }
       });
@@ -151,11 +152,11 @@ function App() {
   // Update elapsed time
   useEffect(() => {
     if (!room || room.gameState.isComplete) return;
-    
+
     const updateTime = () => {
       setElapsedTime(Math.floor((Date.now() - room.gameState.startTime) / 1000));
     };
-    
+
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
@@ -242,9 +243,20 @@ function App() {
   };
 
   // Get selected cell value for highlighting in number pad
-  const selectedCellValue = room && selectedCell 
-    ? room.gameState.board[selectedCell.row][selectedCell.col]?.value ?? null 
+  const selectedCellValue = room && selectedCell
+    ? room.gameState.board[selectedCell.row][selectedCell.col]?.value ?? null
     : null;
+
+  // How many of each digit are placed (and not marked wrong)
+  const digitCounts = useMemo(() => {
+    const counts = Array(10).fill(0);
+    room?.gameState.board.forEach((row) =>
+      row.forEach((cell) => {
+        if (cell.value !== null && cell.isCorrect !== false) counts[cell.value]++;
+      })
+    );
+    return counts;
+  }, [room]);
 
   // Handle number pad clicks
   const handleNumberClick = (num: number) => {
@@ -262,48 +274,44 @@ function App() {
   };
 
   // Keyboard handler for numbers
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Ignore key presses while typing in an input (e.g. the chat box)
-    if ((e.target as HTMLElement).closest?.('input, textarea, [contenteditable="true"]')) return;
-
-    // Ctrl+Z for undo (only in coop)
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-      e.preventDefault();
-      if (room?.mode !== 'versus') {
-        handleUndo();
-      }
-      return;
-    }
-
-    if (!selectedCell) return;
-
-    if (e.key >= '1' && e.key <= '9') {
-      const val = parseInt(e.key);
-      if (isNoteMode) {
-        handleToggleNote(selectedCell.row, selectedCell.col, val);
-      } else {
-        handleMove(selectedCell.row, selectedCell.col, val);
-      }
-    } else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
-      if (room?.mode !== 'versus') {
-        handleMove(selectedCell.row, selectedCell.col, null);
-      }
-    } else if (e.key.toLowerCase() === 'n') {
-      setIsNoteMode(prev => !prev);
-    }
-  }, [selectedCell, isNoteMode, room?.mode]);
-
   useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+    if (!socket) return;
+    const isVersusMode = roomMode === 'versus';
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Ignore key presses while typing in an input (e.g. the chat box)
+      if ((e.target as HTMLElement).closest?.('input, textarea, [contenteditable="true"]')) return;
+
+      // Ctrl+Z for undo (only in coop)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        if (!isVersusMode) socket.emit('undo');
+        return;
+      }
+
+      if (!selectedCell) return;
+
+      if (e.key >= '1' && e.key <= '9') {
+        const val = parseInt(e.key);
+        if (isNoteMode) {
+          socket.emit('toggleNote', selectedCell.row, selectedCell.col, val);
+        } else {
+          socket.emit('makeMove', selectedCell.row, selectedCell.col, val);
+        }
+      } else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
+        if (!isVersusMode) socket.emit('makeMove', selectedCell.row, selectedCell.col, null);
+      } else if (e.key.toLowerCase() === 'n') {
+        setIsNoteMode(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [socket, selectedCell, isNoteMode, roomMode]);
 
   // Check if current player has finished (versus mode)
   const currentPlayer = room?.players.find(p => p.id === socket?.id);
   const playerFinished = room?.mode === 'versus' && currentPlayer?.finished;
-
-  // Sorted final standings (sort a copy - never mutate state during render)
-  const standings = gameWonData ? [...gameWonData].sort((a, b) => b.score - a.score) : null;
 
   const disconnectedBanner = disconnected && (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] bg-amber-500 text-white px-6 py-3 rounded-xl shadow-2xl font-bold flex items-center gap-2">
@@ -314,12 +322,12 @@ function App() {
 
   if (!room) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+      <div className="min-h-dvh bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
         <div className="fixed top-4 right-4 z-50">
           <button
             onClick={toggleTheme}
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-lg hover:scale-110 transition-all"
+            className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md hover:scale-105 transition-all"
           >
             {theme === 'dark' ? <SunIcon size={20} /> : <MoonIcon size={20} />}
           </button>
@@ -327,7 +335,7 @@ function App() {
         <Lobby onCreateRoom={handleCreateRoom} onJoinRoom={handleJoinRoom} initialRoomCode={getInitialRoomCode()} />
         {disconnectedBanner}
         {error && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-6 py-3 rounded-xl shadow-2xl animate-bounce">
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-semibold anim-toast">
             {error}
           </div>
         )}
@@ -337,137 +345,132 @@ function App() {
 
   const isVersus = room.mode === 'versus';
 
+  const chipClass = 'flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-lg bg-slate-100 dark:bg-slate-800/80 text-sm font-semibold text-slate-600 dark:text-slate-300';
+
   return (
-    <div className="min-h-screen pb-32 sm:pb-16 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
-      <header className="sticky top-0 z-40 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-2 sm:px-4 py-2 sm:py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 sm:gap-2 md:gap-4 flex-wrap min-w-0">
-            <h1 className="text-xl font-bold bg-gradient-to-r from-red-600 to-red-800 bg-clip-text text-transparent hidden md:block">
-              Coop Sudoku
-            </h1>
-            {/* Mode Badge */}
-            <div className={`flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-bold uppercase ${
-              isVersus 
-                ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800'
-                : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800'
+    <div className="min-h-dvh bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+      <header className="sticky top-0 z-40 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 h-14 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <div className="hidden md:flex items-center gap-2 mr-2">
+              <span className="p-1.5 rounded-lg bg-gradient-to-br from-red-600 to-rose-700 text-white">
+                <Grid3x3Icon size={16} />
+              </span>
+              <span className="font-extrabold tracking-tight">Coop Sudoku</span>
+            </div>
+
+            <div className={`flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-xs font-bold uppercase ${
+              isVersus
+                ? 'bg-orange-100 dark:bg-orange-500/15 text-orange-700 dark:text-orange-400'
+                : 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
             }`}>
-              {isVersus ? <SwordsIcon size={12} className="sm:w-3.5 sm:h-3.5" /> : <UsersIcon size={12} className="sm:w-3.5 sm:h-3.5" />}
-              <span className="hidden xs:inline">{isVersus ? 'Versus' : 'Coop'}</span>
+              {isVersus ? <SwordsIcon size={14} /> : <UsersIcon size={14} />}
+              <span className="hidden sm:inline">{isVersus ? 'Versus' : 'Coop'}</span>
             </div>
-            <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
-              <span className="text-xs font-bold text-slate-500 uppercase hidden md:inline">Room</span>
-              <span className="font-mono font-bold tracking-wider text-xs sm:text-sm">{room.id}</span>
-              <button
-                onClick={handleCopyRoomLink}
-                className={`p-0.5 sm:p-1 transition-colors ${copied ? 'text-green-500' : 'hover:text-blue-500'}`}
-                title="Copy invite link"
-                aria-label="Copy invite link"
-              >
-                {copied ? '✓' : <Share2Icon size={12} className="sm:w-3.5 sm:h-3.5" />}
-              </button>
-            </div>
-            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 capitalize text-sm font-bold text-slate-600 dark:text-slate-400">
-              {room.gameState.difficulty}
-            </div>
-            <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-slate-100 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-xs sm:text-sm font-mono font-bold text-slate-600 dark:text-slate-400">
-              <ClockIcon size={12} className="sm:w-3.5 sm:h-3.5" />
+
+            <button
+              onClick={handleCopyRoomLink}
+              className={`${chipClass} hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors`}
+              title="Copy invite link"
+            >
+              <span className="font-mono font-bold tracking-widest">{room.id}</span>
+              {copied ? <CheckIcon size={14} className="text-emerald-500" /> : <Share2Icon size={14} className="text-slate-400" />}
+            </button>
+
+            <div className={`${chipClass} hidden sm:flex capitalize`}>{room.gameState.difficulty}</div>
+
+            <div className={`${chipClass} font-mono tabular-nums`}>
+              <ClockIcon size={14} className="text-slate-400" />
               {formatTime(elapsedTime)}
             </div>
           </div>
 
-          <div className="flex items-center gap-1 flex-shrink-0">
-            {!isVersus && (
-              <>
-                <button
-                  onClick={handleUndo}
-                  className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-lg sm:rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-all text-xs sm:text-sm border border-slate-200 dark:border-slate-700"
-                  title="Undo last move (Ctrl+Z)"
-                >
-                  <Undo2Icon size={14} className="sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Undo</span>
-                </button>
-                <button
-                  onClick={handleHint}
-                  className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold rounded-lg sm:rounded-xl hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-all text-xs sm:text-sm border border-amber-200 dark:border-amber-800"
-                >
-                  <LightbulbIcon size={14} className="sm:w-4 sm:h-4" /> <span className="hidden sm:inline">Hint (-15)</span>
-                </button>
-              </>
-            )}
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={toggleTheme}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Toggle theme"
               aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
             >
-              {theme === 'dark' ? <SunIcon size={18} className="sm:w-5 sm:h-5" /> : <MoonIcon size={18} className="sm:w-5 sm:h-5" />}
+              {theme === 'dark' ? <SunIcon size={18} /> : <MoonIcon size={18} />}
             </button>
             <button
               onClick={() => window.location.reload()}
-              className="p-1.5 sm:p-2 text-red-500 rounded-lg sm:rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-              title="Leave Room"
+              className="p-2 text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+              title="Leave room"
               aria-label="Leave room"
             >
-              <LogOutIcon size={18} className="sm:w-5 sm:h-5" />
+              <LogOutIcon size={18} />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-[1600px] mx-auto px-2 sm:px-4 py-4 sm:py-8">
-        <div className="flex flex-col xl:flex-row gap-4 sm:gap-6 items-start justify-center">
-          {/* Left Sidebar - Players & Chat */}
-          <div className="w-full xl:w-72 space-y-4 sm:space-y-6 order-2 xl:order-1 hidden sm:block">
-            <PlayerList players={room.players} currentPlayerId={socket?.id || ''} />
-            <div className="hidden md:block">
-              <Chat messages={messages} onSendMessage={(text) => socket?.emit('sendMessage', text)} currentPlayerId={socket?.id || ''} />
-            </div>
-          </div>
-
-          {/* Center - Board */}
-          <div className="flex-shrink-0 order-1 xl:order-2 relative w-full flex justify-center">
-            <Board 
-              room={room} 
-              onMove={handleMove} 
-              onToggleNote={handleToggleNote}
-              playerId={socket?.id || ''} 
-              selectedCell={selectedCell}
-              setSelectedCell={setSelectedCell}
-              playerCursors={isVersus ? {} : playerCursors}
-            />
-            
-            {/* Waiting overlay for finished player in versus */}
-            {playerFinished && !room.gameState.isComplete && (
-              <div className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-sm flex items-center justify-center">
-                <div className="text-center p-8">
-                  <div className="inline-flex p-4 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 mb-4">
-                    <TrophyIcon size={32} />
+      <main className="max-w-6xl mx-auto px-3 sm:px-4 py-3 sm:py-6">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-center lg:items-start justify-center">
+          {/* Board + controls */}
+          <div className="order-1 lg:order-2 flex flex-col items-center gap-2.5">
+            <div className="relative">
+              <Board
+                room={room}
+                onMove={handleMove}
+                onToggleNote={handleToggleNote}
+                playerId={socket?.id || ''}
+                selectedCell={selectedCell}
+                setSelectedCell={setSelectedCell}
+                playerCursors={isVersus ? {} : playerCursors}
+              />
+              {playerFinished && !room.gameState.isComplete && (
+                <div className="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-md flex items-center justify-center anim-fade">
+                  <div className="text-center p-8">
+                    <div className="inline-flex p-4 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 mb-4">
+                      <TrophyIcon size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold mb-1">You finished!</h3>
+                    <p className="text-slate-500 dark:text-slate-400">Waiting for other players...</p>
                   </div>
-                  <h3 className="text-xl font-bold mb-2">You finished!</h3>
-                  <p className="text-slate-500 dark:text-slate-400">Waiting for other players...</p>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+
+            <NumberPad
+              selectedValue={selectedCellValue}
+              isNoteMode={isNoteMode}
+              digitCounts={digitCounts}
+              isVersus={isVersus}
+              onNumberClick={handleNumberClick}
+              onClear={handleClear}
+              onToggleNoteMode={() => setIsNoteMode(!isNoteMode)}
+              onUndo={handleUndo}
+              onHint={handleHint}
+            />
           </div>
 
-          {/* Right Sidebar - Objective & Number Pad */}
-          <div className="w-full xl:w-72 space-y-6 order-3">
-            {/* Objective Card */}
-            <div className={`p-6 rounded-2xl text-white shadow-xl hidden xl:block ${
-              isVersus 
-                ? 'bg-gradient-to-br from-orange-600 to-orange-800'
-                : 'bg-gradient-to-br from-red-600 to-red-800'
+          {/* Players + chat */}
+          <div className="order-2 lg:order-1 w-full lg:w-64 space-y-4 shrink-0">
+            <PlayerList players={room.players} currentPlayerId={socket?.id || ''} />
+            <Chat messages={messages} onSendMessage={(text) => socket?.emit('sendMessage', text)} currentPlayerId={socket?.id || ''} />
+          </div>
+
+          {/* Rules card (desktop only) */}
+          <aside className="order-3 hidden xl:block w-64 shrink-0">
+            <div className={`p-5 rounded-xl text-white shadow-lg ${
+              isVersus
+                ? 'bg-gradient-to-br from-orange-500 to-orange-700'
+                : 'bg-gradient-to-br from-red-600 to-rose-800'
             }`}>
-              <h3 className="font-bold flex items-center gap-2 mb-2">
-                <TrophyIcon size={18} /> {isVersus ? 'Versus Rules' : 'Objective'}
+              <h3 className="font-bold flex items-center gap-2 mb-2 text-sm">
+                <TrophyIcon size={16} /> {isVersus ? 'Versus Rules' : 'Objective'}
               </h3>
               {isVersus ? (
                 <>
-                  <p className="text-sm opacity-90 leading-relaxed">
+                  <p className="text-xs opacity-90 leading-relaxed">
                     Race to fill cells on your own board! First to claim a cell gets bonus points.
                   </p>
-                  <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-3 gap-2 text-center">
+                  <div className="mt-3 pt-3 border-t border-white/20 grid grid-cols-3 gap-2 text-center">
                     <div>
                       <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">First</p>
-                      <p className="font-bold text-green-300">+100</p>
+                      <p className="font-bold text-emerald-300">+100</p>
                     </div>
                     <div>
                       <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Claimed</p>
@@ -475,119 +478,108 @@ function App() {
                     </div>
                     <div>
                       <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Wrong</p>
-                      <p className="font-bold text-red-300">-250</p>
+                      <p className="font-bold text-rose-300">-250</p>
                     </div>
                   </div>
                 </>
               ) : (
                 <>
-                  <p className="text-sm opacity-90 leading-relaxed">
-                    Collaborate with your team to fill the 9x9 grid. 
-                    Each row, column, and 3x3 subgrid must contain numbers 1-9.
+                  <p className="text-xs opacity-90 leading-relaxed">
+                    Fill the grid together. Each row, column, and 3x3 box must contain the numbers 1-9.
                   </p>
-                  <div className="mt-4 pt-4 border-t border-white/20 grid grid-cols-2 gap-4">
+                  <div className="mt-3 pt-3 border-t border-white/20 grid grid-cols-3 gap-2 text-center">
                     <div>
                       <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Correct</p>
-                      <p className="font-bold">+10 pts</p>
+                      <p className="font-bold text-emerald-300">+10</p>
                     </div>
                     <div>
                       <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Mistake</p>
-                      <p className="font-bold">-5 pts</p>
+                      <p className="font-bold text-rose-300">-5</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase opacity-70 font-bold tracking-wider">Hint</p>
+                      <p className="font-bold">-15</p>
                     </div>
                   </div>
                 </>
               )}
             </div>
 
-            {/* Number Pad - Desktop */}
-            <div className="hidden sm:block">
-              <NumberPad
-                selectedValue={selectedCellValue}
-                isNoteMode={isNoteMode}
-                onNumberClick={handleNumberClick}
-                onClear={handleClear}
-                onToggleNoteMode={() => setIsNoteMode(!isNoteMode)}
-                hideClear={isVersus}
-              />
-            </div>
-          </div>
+            <p className="text-center text-xs text-slate-400 dark:text-slate-600 mt-4">
+              Created by{' '}
+              <a href="https://lmf.logge.top" target="_blank" rel="noopener noreferrer" className="font-bold text-red-500 hover:text-red-400 transition-colors">
+                LMF
+              </a>
+            </p>
+          </aside>
         </div>
       </main>
 
-      {/* Number Pad - Mobile (fixed bottom) */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-30 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-        <NumberPad
-          selectedValue={selectedCellValue}
-          isNoteMode={isNoteMode}
-          onNumberClick={handleNumberClick}
-          onClear={handleClear}
-          onToggleNoteMode={() => setIsNoteMode(!isNoteMode)}
-          onHint={handleHint}
-          hideClear={isVersus}
-          hideHint={isVersus}
-        />
-      </div>
+      {disconnectedBanner}
 
-      {/* Wrong Move Toast */}
+      {/* Wrong move toast */}
       {wrongMoveToast !== null && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-xl shadow-2xl font-bold animate-bounce">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-5 py-2.5 rounded-xl shadow-2xl font-bold anim-toast">
           Wrong number! -{wrongMoveToast} pts
         </div>
       )}
 
-      {disconnectedBanner}
-
-      {standings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md p-8 rounded-3xl shadow-2xl text-center border border-slate-200 dark:border-slate-800 transform animate-in zoom-in-95 duration-300">
-            <div className={`inline-flex p-4 rounded-full mb-6 ${
-              isVersus 
-                ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400'
-                : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400'
+      {gameWonData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm anim-fade">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md p-6 sm:p-8 rounded-2xl shadow-2xl text-center border border-slate-200 dark:border-slate-800 anim-pop">
+            <div className={`inline-flex p-4 rounded-full mb-5 ${
+              isVersus
+                ? 'bg-orange-100 dark:bg-orange-500/15 text-orange-600 dark:text-orange-400'
+                : 'bg-amber-100 dark:bg-amber-500/15 text-amber-500'
             }`}>
-              <TrophyIcon size={48} />
+              <TrophyIcon size={44} />
             </div>
-            {isVersus ? (
-              <>
-                <h2 className="text-3xl font-black mb-2">
-                  {standings[0]?.name} Wins!
-                </h2>
-                <p className="text-slate-500 dark:text-slate-400 mb-8">Final standings</p>
-              </>
-            ) : (
-              <>
-                <h2 className="text-3xl font-black mb-2">Victory!</h2>
-                <p className="text-slate-500 dark:text-slate-400 mb-8">The puzzle has been solved!</p>
-              </>
-            )}
-            
-            <div className="space-y-3 mb-8">
-              {standings.map((p, i) => (
-                <div key={`${p.name}-${i}`} className={`flex items-center justify-between p-3 rounded-xl border ${
-                  i === 0 && isVersus
-                    ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
-                    : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <span className={`font-black ${i === 0 && isVersus ? 'text-orange-500' : 'text-slate-300'}`}>
-                      #{i + 1}
-                    </span>
-                    <span className="font-bold">{p.name}</span>
-                    {i === 0 && isVersus && <span className="text-lg">👑</span>}
+            {(() => {
+              const standings = [...gameWonData].sort((a, b) => b.score - a.score);
+              return (
+                <>
+                  {isVersus ? (
+                    <>
+                      <h2 className="text-3xl font-extrabold mb-1">{standings[0]?.name} wins!</h2>
+                      <p className="text-slate-500 dark:text-slate-400 mb-6">Final standings</p>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-3xl font-extrabold mb-1">Victory!</h2>
+                      <p className="text-slate-500 dark:text-slate-400 mb-6">The puzzle has been solved!</p>
+                    </>
+                  )}
+
+                  <div className="space-y-2 mb-6">
+                    {standings.map((p, i) => (
+                      <div key={p.name} className={`flex items-center justify-between p-3 rounded-xl border ${
+                        i === 0 && isVersus
+                          ? 'bg-orange-50 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/30'
+                          : 'bg-slate-50 dark:bg-slate-800/60 border-slate-100 dark:border-slate-800'
+                      }`}>
+                        <div className="flex items-center gap-3">
+                          <span className={`font-extrabold ${i === 0 && isVersus ? 'text-orange-500' : 'text-slate-300 dark:text-slate-600'}`}>
+                            #{i + 1}
+                          </span>
+                          <span className="font-bold">{p.name}</span>
+                          {i === 0 && isVersus && <span className="text-lg">👑</span>}
+                        </div>
+                        <span className={`font-extrabold ${
+                          i === 0 && isVersus ? 'text-orange-600 dark:text-orange-400' : 'text-sky-600 dark:text-sky-400'
+                        }`}>{p.score}</span>
+                      </div>
+                    ))}
                   </div>
-                  <span className={`font-black ${
-                    i === 0 && isVersus ? 'text-orange-600 dark:text-orange-400' : 'text-red-600 dark:text-red-400'
-                  }`}>{p.score}</span>
-                </div>
-              ))}
-            </div>
+                </>
+              );
+            })()}
 
             <button
               onClick={() => window.location.reload()}
-              className={`w-full py-4 text-white font-black rounded-2xl shadow-lg transition-all active:scale-95 ${
+              className={`w-full py-3.5 text-white font-bold rounded-xl shadow-lg transition-all active:scale-[0.98] ${
                 isVersus
                   ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-500/30'
-                  : 'bg-red-600 hover:bg-red-700 shadow-red-500/30'
+                  : 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 shadow-red-600/25'
               }`}
             >
               Play Again
@@ -597,25 +589,10 @@ function App() {
       )}
 
       {error && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-red-500 text-white px-8 py-4 rounded-2xl shadow-2xl font-bold animate-in slide-in-from-bottom-8">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-6 py-3 rounded-xl shadow-2xl font-semibold anim-toast">
           {error}
         </div>
       )}
-
-      {/* Footer with LMF attribution */}
-      <footer className="hidden sm:block fixed bottom-0 left-0 right-0 z-20 bg-slate-900 text-white py-3 border-t-4 border-red-600">
-        <div className="max-w-7xl mx-auto px-4 flex items-center justify-center gap-2 text-sm">
-          <span className="text-slate-400">Created by</span>
-          <a 
-            href="https://lmf.logge.top" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="font-bold text-red-500 hover:text-red-400 transition-colors flex items-center gap-1"
-          >
-            LMF <ExternalLinkIcon size={12} />
-          </a>
-        </div>
-      </footer>
     </div>
   );
 }

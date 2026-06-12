@@ -3,49 +3,34 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* LMF Color Palette */
-  --primary-color: #d90429;
-  --secondary-color: #8b0000;
-  --accent-color: #ee5a6f;
-  --primary-gradient: linear-gradient(135deg, #d90429 0%, #8b0000 100%);
-  --secondary-gradient: linear-gradient(135deg, #ff6b6b 0%, #d90429 100%);
-  
-  /* Grid styles */
-  --player-color: #d90429;
-  --border-thin: 1px;
-  --border-thick: 3px;
-  --grid-border-color: #1a1a2e;
-  --cell-border-color: rgba(148, 163, 184, 0.4);
-}
-
-.dark {
-  --grid-border-color: #e2e8f0;
-  --cell-border-color: rgba(100, 116, 139, 0.5);
-}
-
-/* Sudoku Grid Styles */
-.sudoku-grid {
-  display: grid;
-  grid-template-columns: repeat(9, 1fr);
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  max-width: min(calc(100vw - 1rem), calc(100vh - 16rem), 600px);
-  border: var(--border-thick) solid var(--grid-border-color);
-  border-radius: 4px;
-  margin: 0 auto;
-  touch-action: manipulation;
+  --grid-line: rgba(100, 116, 139, 0.35);
+  --grid-line-strong: #475569;
+  /* Board must fit beside header + toolbar + number pad on one screen */
+  --board-size: min(100vw - 1.25rem, 100dvh - 19.5rem, 560px);
 }
 
 @media (min-width: 640px) {
-  .sudoku-grid {
-    max-width: min(calc(100vh - 12rem), 600px);
+  :root {
+    --board-size: min(100vw - 2rem, 100dvh - 17rem, 560px);
   }
 }
 
-@media (min-width: 1280px) {
-  .sudoku-grid {
-    max-width: min(70vh, 600px);
-  }
+.dark {
+  --grid-line: rgba(148, 163, 184, 0.22);
+  --grid-line-strong: #cbd5e1;
+}
+
+.board-width {
+  width: var(--board-size);
+}
+
+.sudoku-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  width: var(--board-size);
+  aspect-ratio: 1 / 1;
+  border: 2px solid var(--grid-line-strong);
+  touch-action: manipulation;
 }
 
 .sudoku-cell {
@@ -53,37 +38,42 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: var(--border-thin) solid var(--cell-border-color);
+  border: 1px solid var(--grid-line);
   aspect-ratio: 1 / 1;
-  font-size: clamp(1rem, 4vw, 2.25rem);
+  font-size: clamp(1.1rem, calc(var(--board-size) / 18), 2rem);
   font-weight: 600;
   cursor: pointer;
   user-select: none;
-  overflow: visible;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Thick right border for columns 3 and 6 (end of 3x3 boxes) */
+/* Thick separators between 3x3 boxes */
 .sudoku-cell:nth-child(3n):not(:nth-child(9n)) {
-  border-right: var(--border-thick) solid var(--grid-border-color);
+  border-right: 2px solid var(--grid-line-strong);
+}
+.sudoku-grid > div:nth-child(n + 19):nth-child(-n + 27),
+.sudoku-grid > div:nth-child(n + 46):nth-child(-n + 54) {
+  border-bottom: 2px solid var(--grid-line-strong);
 }
 
-/* Thick bottom border for rows 3 and 6 (end of 3x3 boxes) */
-.sudoku-grid > div:nth-child(n+19):nth-child(-n+27),
-.sudoku-grid > div:nth-child(n+46):nth-child(-n+54) {
-  border-bottom: var(--border-thick) solid var(--grid-border-color);
+/* Animations (tailwindcss-animate is not installed, so roll our own) */
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
 }
-
-/* Mobile-friendly number pad */
-@media (max-width: 640px) {
-  .number-pad-mobile {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 30;
-    background: inherit;
-    padding: 1rem;
-    border-top: 1px solid var(--cell-border-color);
-  }
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.anim-pop { animation: pop-in 0.25s ease-out; }
+.anim-fade { animation: fade-in 0.2s ease-out; }
+.anim-toast { animation: toast-in 0.25s ease-out; }
+.anim-sheet { animation: sheet-up 0.25s ease-out; }

@@ -62,7 +62,7 @@ const Board: React.FC<BoardProps> = ({ room, playerId, selectedCell, setSelected
   };
 
   return (
-    <div role="grid" aria-label="Sudoku board" className="sudoku-grid bg-white dark:bg-slate-900 shadow-2xl rounded-sm overflow-hidden">
+    <div role="grid" aria-label="Sudoku board" className="sudoku-grid bg-white dark:bg-slate-900 shadow-xl shadow-slate-900/10 dark:shadow-black/40 rounded-md overflow-hidden">
       {room.gameState.board.map((row, rIndex) =>
         row.map((cell, cIndex) => {
           const isSelected = selectedCell?.row === rIndex && selectedCell?.col === cIndex;
