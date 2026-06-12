@@ -6,7 +6,7 @@ import Board from './components/Board';
 import PlayerList from './components/PlayerList';
 import Chat from './components/Chat';
 import NumberPad from './components/NumberPad';
-import { useTheme } from './context/ThemeContext';
+import { useTheme } from './context/theme';
 import { MoonIcon, SunIcon, LogOutIcon, Share2Icon, TrophyIcon, ClockIcon, CheckIcon, UsersIcon, SwordsIcon, Grid3x3Icon } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
