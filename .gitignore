@@ -1,8 +1,9 @@
 node_modules/
 dist/
+coverage/
 .env
 .DS_Store
-coverage/
 .vscode/
-server/src/**/*.js
-shared/*.js
+
+# Built client, produced by `npm run build`
+server/public/

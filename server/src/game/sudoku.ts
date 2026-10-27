@@ -1,103 +1,127 @@
-import { Difficulty } from '../../../shared/types';
+import type { Difficulty } from '@coop-sudoku/shared';
 
-export class SudokuEngine {
-  static generate(difficulty: Difficulty): { board: number[][]; solution: number[][] } {
-    const solution = this.generateSolvedBoard();
-    const board = this.pokeHoles(JSON.parse(JSON.stringify(solution)), difficulty);
-    return { board, solution };
+/** Flat 81-cell grid, row-major, 0 = empty */
+export type Grid = number[];
+export type Rng = () => number;
+
+const ALL_DIGITS = 0b11_1111_1110; // bits 1..9
+
+/** Number of cells to clear per difficulty. Hard may end up with fewer if uniqueness forbids more. */
+const HOLES: Record<Difficulty, number> = { easy: 40, medium: 48, hard: 56 };
+
+const rowOf = (i: number) => Math.floor(i / 9);
+const colOf = (i: number) => i % 9;
+const boxOfIndex = (i: number) => Math.floor(rowOf(i) / 3) * 3 + Math.floor(colOf(i) / 3);
+
+function bitCount(n: number): number {
+  let count = 0;
+  while (n) {
+    n &= n - 1;
+    count++;
+  }
+  return count;
+}
+
+function shuffle<T>(items: T[], rng: Rng): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * Backtracking solver with bitmasks and most-constrained-cell ordering.
+ * Stops after `limit` solutions. Pass `rng` to explore digits in random order.
+ */
+export function solve(grid: Grid, limit = 2, rng?: Rng): { count: number; solution: Grid | null } {
+  const g = grid.slice();
+  const rows = new Array<number>(9).fill(0);
+  const cols = new Array<number>(9).fill(0);
+  const boxes = new Array<number>(9).fill(0);
+
+  for (let i = 0; i < 81; i++) {
+    const v = g[i];
+    if (!v) continue;
+    const bit = 1 << v;
+    const r = rowOf(i), c = colOf(i), b = boxOfIndex(i);
+    if (rows[r] & bit || cols[c] & bit || boxes[b] & bit) return { count: 0, solution: null };
+    rows[r] |= bit;
+    cols[c] |= bit;
+    boxes[b] |= bit;
   }
 
-  private static generateSolvedBoard(): number[][] {
-    const board = Array(9).fill(null).map(() => Array(9).fill(0));
-    this.fillBoard(board);
-    return board;
-  }
+  let count = 0;
+  let solution: Grid | null = null;
 
-  private static fillBoard(board: number[][]): boolean {
-    for (let row = 0; row < 9; row++) {
-      for (let col = 0; col < 9; col++) {
-        if (board[row][col] === 0) {
-          const nums = this.shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-          for (const num of nums) {
-            if (this.isValid(board, row, col, num)) {
-              board[row][col] = num;
-              if (this.fillBoard(board)) return true;
-              board[row][col] = 0;
-            }
-          }
-          return false;
-        }
+  const search = (): boolean => {
+    let best = -1;
+    let bestMask = 0;
+    let bestCount = 10;
+    for (let i = 0; i < 81; i++) {
+      if (g[i]) continue;
+      const mask = ALL_DIGITS & ~(rows[rowOf(i)] | cols[colOf(i)] | boxes[boxOfIndex(i)]);
+      const n = bitCount(mask);
+      if (n === 0) return false;
+      if (n < bestCount) {
+        best = i;
+        bestMask = mask;
+        bestCount = n;
+        if (n === 1) break;
       }
     }
-    return true;
+
+    if (best === -1) {
+      count++;
+      solution ??= g.slice();
+      return count >= limit;
+    }
+
+    let digits: number[] = [];
+    for (let d = 1; d <= 9; d++) if (bestMask & (1 << d)) digits.push(d);
+    if (rng) digits = shuffle(digits, rng);
+
+    const r = rowOf(best), c = colOf(best), b = boxOfIndex(best);
+    for (const d of digits) {
+      const bit = 1 << d;
+      g[best] = d;
+      rows[r] |= bit;
+      cols[c] |= bit;
+      boxes[b] |= bit;
+      if (search()) return true;
+      rows[r] &= ~bit;
+      cols[c] &= ~bit;
+      boxes[b] &= ~bit;
+    }
+    g[best] = 0;
+    return false;
+  };
+
+  search();
+  return { count, solution };
+}
+
+export function isValidSolution(grid: Grid): boolean {
+  return grid.length === 81 && grid.every((v) => v >= 1 && v <= 9) && solve(grid, 1).count === 1;
+}
+
+/** Generates a puzzle with exactly one solution */
+export function generatePuzzle(difficulty: Difficulty, rng: Rng = Math.random): { puzzle: Grid; solution: Grid } {
+  const { solution } = solve(new Array(81).fill(0), 1, rng);
+  if (!solution) throw new Error('Failed to generate a solved grid');
+
+  const puzzle = solution.slice();
+  const target = HOLES[difficulty];
+  let removed = 0;
+
+  for (const i of shuffle([...Array(81).keys()], rng)) {
+    if (removed >= target) break;
+    const backup = puzzle[i];
+    puzzle[i] = 0;
+    if (solve(puzzle, 2).count === 1) removed++;
+    else puzzle[i] = backup;
   }
 
-  private static isValid(board: number[][], row: number, col: number, num: number): boolean {
-    for (let i = 0; i < 9; i++) {
-      if (board[row][i] === num || board[i][col] === num) return false;
-    }
-    const startRow = Math.floor(row / 3) * 3;
-    const startCol = Math.floor(col / 3) * 3;
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 3; j++) {
-        if (board[startRow + i][startCol + j] === num) return false;
-      }
-    }
-    return true;
-  }
-
-  private static shuffle<T>(array: T[]): T[] {
-    const newArray = [...array];
-    for (let i = newArray.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
-    }
-    return newArray;
-  }
-
-  // Counts solutions via backtracking, short-circuiting once `limit` is reached
-  private static countSolutions(board: number[][], limit: number): number {
-    for (let row = 0; row < 9; row++) {
-      for (let col = 0; col < 9; col++) {
-        if (board[row][col] === 0) {
-          let count = 0;
-          for (let num = 1; num <= 9 && count < limit; num++) {
-            if (this.isValid(board, row, col, num)) {
-              board[row][col] = num;
-              count += this.countSolutions(board, limit - count);
-              board[row][col] = 0;
-            }
-          }
-          return count;
-        }
-      }
-    }
-    return 1; // Board is full: exactly one solution found
-  }
-
-  private static pokeHoles(board: number[][], difficulty: Difficulty): number[][] {
-    const holes = {
-      easy: 35,
-      medium: 45,
-      hard: 55,
-    }[difficulty];
-
-    // Try cells in random order; only keep removals that preserve a unique solution
-    const positions = this.shuffle(
-      Array.from({ length: 81 }, (_, i) => [Math.floor(i / 9), i % 9])
-    );
-
-    let removed = 0;
-    for (const [row, col] of positions) {
-      if (removed >= holes) break;
-      const backup = board[row][col];
-      board[row][col] = 0;
-      if (this.countSolutions(board, 2) > 1) {
-        board[row][col] = backup;
-      } else {
-        removed++;
-      }
-    }
-    return board;
-  }
+  return { puzzle, solution };
 }

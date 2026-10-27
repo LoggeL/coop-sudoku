@@ -1,17 +1,28 @@
 {
   "name": "coop-sudoku",
-  "version": "1.0.0",
-  "description": "Cooperative multiplayer Sudoku game",
-  "scripts": {
-    "install:all": "npm install --prefix client && npm install --prefix server",
-    "build:client": "npm run build --prefix client",
-    "build:server": "npm run build --prefix server",
-    "build": "npm run build:client && npm run build:server",
-    "start": "npm start --prefix server",
-    "dev:client": "npm run dev --prefix client",
-    "dev:server": "npm run dev --prefix server",
-    "dev": "npm run dev:server"
+  "version": "2.0.0",
+  "private": true,
+  "description": "Real-time multiplayer Sudoku — solve together or race each other",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=20.19"
   },
-  "keywords": ["sudoku", "multiplayer", "cooperative", "game"],
-  "license": "ISC"
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c magenta,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client && npm run build -w server",
+    "start": "npm start -w server",
+    "test": "npm test -w server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint -w client"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6",
+    "typescript": "~5.9.3"
+  }
 }

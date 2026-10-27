@@ -1,96 +1,77 @@
-# Coop Sudoku - Real-time Collaborative Sudoku
+# Coop Sudoku
 
-A real-time multiplayer Sudoku game where you can solve puzzles cooperatively with friends. Built with React, Node.js, and Socket.io.
+Real-time multiplayer Sudoku. Share a link and solve one board together with up to four friends — or race each other on the same puzzle.
 
-**Created by [LMF](https://lmf.logge.top)**
-
-![Coop Sudoku Screenshot](https://via.placeholder.com/800x450?text=Coop+Sudoku+Preview)
+**Made by [LMF](https://lmf.logge.top)**
 
 ## Features
 
-- **Real-time Collaboration**: See other players' moves and cursors instantly.
-- **Multiplayer Rooms**: Create private rooms or join existing ones via code or link.
-- **Smart Highlighting**: Selected numbers, rows, columns, and boxes are highlighted for better visibility.
-- **Notes Mode**: Toggle notes to keep track of potential candidates.
-- **Scoring System**: Earn points for correct moves, lose points for mistakes.
-- **Undo Support**: Ctrl+Z to undo your last moves.
-- **Themes**: Dark and Light mode support.
-- **Responsive Design**: Works on desktop and mobile devices.
+- **Co-op** — one shared board, shared pencil notes, live cursors, and a colored marker showing who solved which cell
+- **Versus** — same puzzle, private boards. First to solve a cell gets +100, everyone after +50, wrong digits cost 250
+- **Unique puzzles** — every generated puzzle has exactly one solution (easy / medium / hard)
+- **Reconnect-safe** — reload the page or lose your connection and you keep your seat and score for 2 minutes
+- **Rematch** — start the next round in the same room once a puzzle is solved
+- **Chat** with history for late joiners, invite links, dark & light theme, fully responsive, keyboard friendly
 
-## Tech Stack
+### Shortcuts
 
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS 4
-- **Backend**: Node.js, Express, Socket.io
-- **State Management**: React Hooks + Socket.io events
-- **Styling**: Tailwind CSS with custom branding colors
+| Key | Action |
+| --- | --- |
+| `1`–`9` | Enter digit (or toggle note in notes mode) |
+| `N` | Toggle notes mode |
+| `⌫` / `Delete` | Clear notes in the cell |
+| Arrow keys | Move selection |
+| `H` | Hint (co-op, −15 points) |
+| `Ctrl/⌘ Z` | Undo your last note edit |
+| `Esc` | Deselect |
 
-## Getting Started
+## Tech stack
 
-### Prerequisites
+| | |
+| --- | --- |
+| Client | React 19, Vite, Tailwind CSS 4, Zustand, Motion |
+| Server | Node.js, Express 5, Socket.IO 4 |
+| Shared | TypeScript types + protocol in `shared/` |
+| Tests | Vitest (sudoku engine and game rules) |
 
-- Node.js (v14 or higher)
-- npm or yarn
-
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/coop-sudoku.git
-   cd coop-sudoku
-   ```
-
-2. Install dependencies for both client and server:
-   ```bash
-   # Install server dependencies
-   cd server
-   npm install
-
-   # Install client dependencies
-   cd ../client
-   npm install
-   ```
-
-### Running the Application
-
-You need to run both the server and client terminals.
-
-**Terminal 1 (Server):**
-```bash
-cd server
-npm run dev
-```
-
-**Terminal 2 (Client):**
-```bash
-cd client
-npm run dev
-```
-
-Open [http://localhost:5173](http://localhost:5173) to play.
-
-## Project Structure
+npm workspaces tie the three packages together.
 
 ```
 coop-sudoku/
-├── client/                 # React Frontend
-│   ├── src/
-│   │   ├── components/     # UI Components (Board, Cell, Lobby, etc.)
-│   │   ├── hooks/          # Custom hooks (useSocket)
-│   │   └── context/        # React Context (Theme)
-│   └── ...
-├── server/                 # Node.js Backend
-│   ├── src/
-│   │   ├── game/           # Sudoku generation logic
-│   │   └── rooms/          # Room management logic
-│   └── ...
-└── shared/                 # Shared TypeScript types
-    └── types.ts
+├── client/   React app (built into server/public)
+├── server/   Express + Socket.IO, game engine in src/game
+└── shared/   Types, socket protocol, rules and scoring
 ```
 
-## Credits
+## Development
 
-Created by **LMF** ([lmf.logge.top](https://lmf.logge.top)).
-Based on the Coop Sudoku project.
+Requires Node.js 20.19+.
+
+```bash
+npm install
+npm run dev
+```
+
+This starts the server on `:3001` and Vite on [http://localhost:5173](http://localhost:5173) (which proxies the socket to the server).
+
+Other scripts:
+
+```bash
+npm test           # server unit tests
+npm run typecheck  # all workspaces
+npm run lint       # client
+npm run build      # client → server/public, server → server/dist
+npm start          # run the production build on :3001
+```
+
+## Docker
+
+```bash
+docker build -t coop-sudoku .
+docker run -p 3001:3001 coop-sudoku
+```
+
+`PORT` and `PUBLIC_DIR` can be set via environment variables. `GET /healthz` returns the server status.
 
 ## License
 

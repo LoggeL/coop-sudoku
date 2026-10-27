@@ -1,13 +1,16 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
-import { ThemeProvider } from './context/ThemeContext'
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/space-grotesk';
+import '@fontsource-variable/geist-mono';
+import './index.css';
+import { App } from './App.tsx';
+import { connect } from './lib/store.ts';
+
+connect();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider>
-      <App />
-    </ThemeProvider>
+    <App />
   </StrictMode>,
-)
+);
